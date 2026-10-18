@@ -1,0 +1,63 @@
+# Local stack. Profiles:
+#   (mặc định)  chỉ localstack            -> make infra
+#   app / full  thêm backend, worker      -> make up
+#   full        thêm nginx giả lập CloudFront
+services:
+  localstack:
+    image: ${LOCALSTACK_IMAGE:-localstack/localstack:latest}
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,sqs,dynamodb,ssm
+      AWS_DEFAULT_REGION: ap-southeast-1
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}   # bắt buộc với image hiện tại
+    volumes:
+      # Script chạy tự động mỗi khi LocalStack "ready" (tạo bucket/queue/bảng)
+      - ./local/localstack/init:/etc/localstack/init/ready.d
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # --- Bật khi backend/ và worker/ đã có Dockerfile --------------------------
+  backend:
+    build: ./backend
+    profiles: [app, full]
+    depends_on:
+      localstack: { condition: service_healthy }
+    environment:
+      AWS_ENDPOINT_URL: http://localstack:4566          # nội bộ container
+      S3_PRESIGN_ENDPOINT: http://localhost:4566        # URL trình duyệt truy cập được
+      AWS_REGION: ap-southeast-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-209715200}
+    ports:
+      - "8080:8080"
+
+  worker:
+    build: ./worker
+    profiles: [app, full]
+    depends_on:
+      localstack: { condition: service_healthy }
+    environment:
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: ap-southeast-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SQS_QUEUE_NAME: tvc-local-jobs
+      MAX_DURATION_SECONDS: ${MAX_DURATION_SECONDS:-300}
+      MAX_HEIGHT_PIXELS: ${MAX_HEIGHT_PIXELS:-1080}
+    # Không publish port để dùng được: docker compose up --scale worker=3
+
+  edge:
+    image: nginx:alpine
+    profiles: [full]
+    ports:
+      - "8000:80"
+    volumes:
+      - ./local/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

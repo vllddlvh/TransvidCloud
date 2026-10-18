@@ -1,0 +1,8 @@
+# Ép LF cho mọi script/cấu hình: tránh lỗi CRLF khi chạy trong container Linux
+* text=auto
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.tf   text eol=lf
+Makefile text eol=lf
+*.mp4  binary

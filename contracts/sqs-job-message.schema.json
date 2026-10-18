@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TransVidCloud job message (DRAFT)",
+  "type": "object",
+  "required": ["schemaVersion", "jobId", "videoId", "projectId", "inputKey"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "jobId": { "type": "string" },
+    "videoId": { "type": "string" },
+    "projectId": { "type": "string" },
+    "inputKey": { "type": "string" },
+    "requestedAt": { "type": "string", "format": "date-time" }
+  }
+}
