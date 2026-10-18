@@ -1,0 +1,10 @@
+# Thay các handle bên dưới bằng tên GitHub thật.
+# Phương = backend | Vũ = worker | Lưu = cloud dữ liệu/edge | Nguyên = cloud compute/vận hành
+/contracts/        @github-user-phuong @github-user-vu @github-user-luu @github-user-nguyen
+/backend/          @github-user-phuong
+/worker/           @github-user-vu
+/frontend/         @github-user-vu @github-user-luu
+/infra/            @github-user-luu @github-user-nguyen
+/local/            @github-user-luu @github-user-nguyen
+/scripts/          @github-user-nguyen
+/.github/          @github-user-nguyen

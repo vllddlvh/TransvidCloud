@@ -1,0 +1,171 @@
+# Triển khai local và CI/CD lên cloud
+
+Mục tiêu: **chạy và kiểm thử hết trên máy, sau đó đẩy lên AWS bằng pipeline có kiểm soát**,
+để lỗi còn lại trên cloud chỉ là lỗi IAM, mạng hoặc cấu hình.
+
+---
+
+## Phần 1. Chạy local
+
+### 1.1. Cài đặt (Windows + Git Bash)
+
+| Công cụ | Ghi chú |
+|---|---|
+| Docker Desktop (backend WSL2) | Bắt buộc |
+| Git Bash | Đã có |
+| `make` | Git Bash **không có sẵn**: `winget install GnuWin32.Make` hoặc `choco install make`. Có thể chạy thẳng `docker compose` nếu không muốn cài |
+| JDK 21 | Cho backend (Phương) |
+| Go (bản trong `worker/go.mod`) + FFmpeg | Cho worker (Vũ); FFmpeg cũng có trong image Docker |
+| Node 20 | Cho frontend |
+| AWS CLI, Terraform >= 1.10 | Cho nhóm cloud |
+| **LocalStack auth token** | Từ 23/03/2026 image LocalStack yêu cầu token (có gói free phi thương mại). Mỗi người đăng ký tại app.localstack.cloud, dán vào `LOCALSTACK_AUTH_TOKEN` trong `.env`. Nếu không muốn dùng token, xem phương án thay thế ở Phần 3 |
+
+### 1.2. Khởi động nhanh
+```bash
+cp .env.example .env
+make infra      # chỉ LocalStack (S3, SQS+DLQ, DynamoDB), khoảng 20-30 giây
+make smoke      # phải báo OK cho 3 bucket, 2 queue, 4 bảng
+```
+
+### 1.3. Ba chế độ chạy
+
+| Chế độ | Lệnh | Khi nào dùng |
+|---|---|---|
+| Chỉ hạ tầng | `make infra` | Dev backend/worker bằng IDE, chạy trực tiếp trên máy, trỏ `AWS_ENDPOINT_URL=http://localhost:4566` |
+| Toàn bộ stack | `make up` | Kiểm thử tích hợp, demo: LocalStack + backend + worker + nginx tại `http://localhost:8000` |
+| Nhiều worker | `make worker-scale N=3` | Kiểm tra nhiều worker cùng nhận job từ queue |
+
+Lệnh khác: `make down`, `make reset` (xóa sạch, dựng lại), `make logs S=worker`, `make help`.
+
+### 1.4. Local và cloud tương ứng thế nào
+
+| Cloud | Local | Ghi chú |
+|---|---|---|
+| S3 x3 bucket | LocalStack S3 | Có CORS cho bucket input |
+| SQS + DLQ | LocalStack SQS | Cùng cấu hình: visibility 300s, long polling 20s, `maxReceiveCount=3` |
+| DynamoDB | LocalStack DynamoDB | Bảng tạo theo `contracts/dynamodb-tables.md` |
+| CloudFront | nginx (`localhost:8000`) | `/`, `/api/*`, `/media/*` |
+| EC2 API, ASG Worker | Container `backend`, `worker` | Co giãn local chỉ giả lập bằng `--scale` |
+| CloudWatch, Auto Scaling, IAM, SSM | **Không giả lập** | Kiểm thử trên AWS thật (Sprint 3-4) |
+
+### 1.5. Biến môi trường then chốt
+
+| Biến | Local | Cloud |
+|---|---|---|
+| `AWS_ENDPOINT_URL` | `http://localhost:4566` (hoặc `http://localstack:4566` trong container) | **để trống** |
+| `S3_PRESIGN_ENDPOINT` | `http://localhost:4566` | để trống (dùng endpoint S3 thật) |
+| Credential | `test` / `test` | IAM Role gắn vào EC2 |
+| Tên tài nguyên | `tvc-local-*` | `tvc-{env}-*` |
+
+> **Bẫy hay gặp: hai endpoint cho S3.** Backend gọi S3 qua `localstack:4566` (nội bộ container),
+> nhưng presigned URL gửi cho trình duyệt phải là `localhost:4566`. Vì vậy phải tách hai biến trên
+> và dùng path-style addressing khi chạy local.
+
+### 1.6. Các tầng kiểm thử local
+
+| Tầng | Lệnh | Kiểm tra gì |
+|---|---|---|
+| Unit | `make test` | Logic từng module (vd: công thức `BacklogPerInstance`) |
+| Smoke | `make smoke` | LocalStack có đủ tài nguyên |
+| E2E | `make e2e` | upload -> job -> HLS 360p/720p + thumbnail -> `COMPLETED` -> phát qua `/media/*` |
+| Chaos | `make chaos` | Kill worker giữa chừng -> job được nhận lại; lỗi 3 lần -> vào DLQ |
+
+### 1.7. Tiêu chí "sẵn sàng đẩy lên cloud"
+- [ ] `make e2e` pass trên local
+- [ ] Kịch bản retry/DLQ pass
+- [ ] Contract không còn thay đổi chưa được duyệt
+- [ ] Image backend và worker build được bằng `docker build`
+- [ ] Terraform `plan` sạch cho môi trường `dev`
+
+---
+
+## Phần 2. Lên cloud (AWS)
+
+### 2.1. Tổng quan luồng
+
+```
+Developer --PR--> CI (build, test, validate)
+                    | merge main
+                    v
+          Deploy (chạy tay, chọn env)
+   build image -> ECR (tag = commit SHA)
+        |-> API:    SSM Run Command -> EC2 pull image mới
+        |-> Worker: ghi tag vào SSM Parameter Store -> ASG Instance Refresh
+        '-> Frontend: build -> S3 sync -> CloudFront invalidation
+```
+
+Hạ tầng (S3, SQS, DynamoDB, EC2, ASG, CloudFront...) **do Terraform tạo**, tách riêng khỏi pipeline deploy ứng dụng.
+
+### 2.2. Thứ tự làm lần đầu
+
+| Bước | Việc | Chủ |
+|---|---|---|
+| 1 | **Bootstrap state:** tạo tay một lần bucket S3 chứa Terraform state (bật versioning) | Lưu |
+| 2 | `terraform apply` ở `envs/dev`: module `storage`, `queue`, `database`, `network` | Lưu |
+| 3 | Thêm `iam`, `compute`: role riêng cho API/Worker/CI, EC2 API, Launch Template + ASG Worker | Nguyên |
+| 4 | Tạo 2 repo ECR (`tvc-backend`, `tvc-worker`) và **OIDC provider + role cho GitHub Actions** | Nguyên |
+| 5 | Khai báo biến GitHub Actions: `AWS_DEPLOY_ROLE_ARN`, `ECR_REGISTRY`, `FRONTEND_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID` | Nguyên |
+| 6 | Đưa cấu hình/secret vào SSM Parameter Store (`/tvc/dev/...`) | Nguyên |
+| 7 | Chạy workflow **Deploy** (env = dev), kiểm tra `tests/e2e` với `BASE_URL` trỏ domain CloudFront | Cả nhóm |
+| 8 | Tạo Cloudflare Tunnel (thủ công một lần), thêm `edge` (CloudFront + OAC) và `observability` (CloudWatch, SNS, Budgets, scaling) | Nguyên (Lưu hỗ trợ hosting frontend) |
+
+### 2.3. Hai pipeline
+
+**CI (`ci.yml`) - tự chạy mỗi PR và push `main`:** build + test từng module đã có code (bước nào chưa có code sẽ tự bỏ qua),
+`terraform fmt` + `validate`. Không có quyền AWS.
+
+**Deploy (`deploy.yml`) - chạy tay, chọn `dev` hoặc `demo`:**
+1. Lấy quyền AWS tạm thời qua **OIDC** (không lưu access key trong GitHub).
+2. Build image backend/worker, gắn tag = commit SHA, đẩy lên ECR.
+3. API: `scripts/deploy-api.sh` gửi lệnh qua SSM Run Command để EC2 kéo và chạy image mới.
+4. Worker: `scripts/bump-worker-tag.sh` ghi tag mới vào Parameter Store rồi kích hoạt ASG Instance Refresh (thay máy dần dần).
+5. Frontend: build React, `s3 sync` lên bucket frontend, invalidation CloudFront.
+
+### 2.4. Môi trường
+
+| Môi trường | Dùng để | Quản lý |
+|---|---|---|
+| `local` | Phát triển hằng ngày | Docker Compose |
+| `dev` | Thử nghiệm trên AWS thật, benchmark | Terraform `envs/dev` |
+| `demo` | Trình diễn, dựng trước buổi demo | Terraform `envs/demo`; **destroy sau khi dùng** |
+
+### 2.5. Rollback
+Image gắn tag theo commit SHA nên rollback = chạy lại Deploy với SHA cũ (hoặc `ENV=... TAG=<sha cũ>` cho từng script).
+Thay đổi hạ tầng: `git revert` rồi `terraform apply`.
+
+### 2.6. Bảo mật và chi phí
+- Không commit bí mật; secret ở SSM Parameter Store, truy cập bằng IAM Role (least privilege, tách role API/Worker/CI).
+- Không mở SSH; quản trị máy bằng SSM Session Manager.
+- AWS Budgets cảnh báo ở 25 và 50 USD.
+- Worker tối thiểu 1 máy; sau buổi thử nghiệm/demo hãy `terraform destroy` môi trường không dùng.
+
+---
+
+### 2.7. Tên miền và Cloudflare Tunnel
+- DNS của tên miền đặt ở Cloudflare. **API** đi qua Cloudflare Tunnel: `cloudflared` chạy trên EC2 API và chủ động kết nối ra ngoài, nên EC2 **không cần mở inbound** và không cần chứng chỉ riêng.
+- **Frontend và HLS** vẫn do CloudFront phân phối (S3 qua OAC). Với `/api/*`, CloudFront dùng origin là hostname của tunnel (ví dụ `origin-api.<domain>`), và không chuyển tiếp Host của người xem.
+- Các bước (Nguyên): tạo tunnel trong Cloudflare, lưu token vào Parameter Store (SecureString) `/tvc/{env}/cloudflared/token`, khai báo public hostname trỏ `http://localhost:8080`, chạy container `cloudflared` cùng API.
+- Làm trước với tên `*.cloudfront.net`; gắn tên miền riêng sau (ACM ở us-east-1, CNAME ở Cloudflare dạng DNS only).
+- Local không cần Cloudflare. Có thể dùng `cloudflared` tạm để chia sẻ bản local cho thành viên khác xem.
+- Rủi ro và phương án thay thế (hai subdomain + CORS): xem `docs/EPICS.md` mục 8.1.
+
+### 2.8. Giới hạn upload và chi phí Worker
+- **Giới hạn upload MVP:** 200 MB, 5 phút, tối đa 1080p; kiểm tra ở frontend, API, `confirm`, Worker và lifecycle S3 (chi tiết `contracts/upload-limits.md`).
+- **Worker rẻ:** Spot với nhiều loại máy nhỏ, min 0 khi không dùng và min 1 khi demo/benchmark, EBS gp3 nhỏ, không NAT Gateway.
+- **Benchmark:** dùng on-demand loại máy cố định (tránh CPU credits của `t3` làm sai số liệu).
+- Kiểm tra **Service Quotas** (vCPU on-demand/Spot) ngay tuần đầu; tài khoản mới có thể bị giới hạn thấp.
+- Sau mỗi đợt thử nghiệm: `terraform destroy` môi trường không dùng; theo dõi AWS Budgets.
+
+## Phần 3. Xử lý sự cố thường gặp (Windows)
+
+| Triệu chứng | Nguyên nhân / cách xử lý |
+|---|---|
+| `make: command not found` | Git Bash không có make. Cài như mục 1.1 hoặc chạy `docker compose` trực tiếp |
+| Script báo `\r: command not found` | File bị CRLF. Đã có `.gitattributes` ép LF; chạy `git add --renormalize .` hoặc `dos2unix` |
+| `docker exec ... /path` bị đổi thành `C:/Program Files/Git/...` | Thêm tiền tố `MSYS_NO_PATHCONV=1` |
+| Script init của LocalStack không chạy | Kiểm tra `chmod +x local/localstack/init/01-resources.sh`; xem `make logs S=localstack` |
+| Trình duyệt PUT lên presigned URL bị lỗi CORS / sai host | Kiểm tra `S3_PRESIGN_ENDPOINT=http://localhost:4566` và `cors.json` của bucket input |
+| LocalStack báo thiếu/sai auth token, hoặc không pull được image | Điền `LOCALSTACK_AUTH_TOKEN` trong `.env`. Nếu nhóm không muốn dùng token: thay bằng MinIO (S3) + ElasticMQ (SQS) + DynamoDB Local (không cần token, code chỉ đổi endpoint nhưng `01-resources.sh` phải viết lại bằng `aws` CLI trỏ `--endpoint-url`). Các emulator mới (Floci, MiniStack) tuyên bố tương thích cổng 4566 nhưng nhóm chưa kiểm chứng, chỉ nên thử trước khi chọn |
+| nginx không lên / 502 | Service đích chưa chạy (`backend`, Vite dev server cổng 5173). Khởi động service rồi thử lại |
+| Trên cloud `/api/*` trả 502/403 qua CloudFront | Kiểm tra tunnel đang chạy trên EC2, hostname tunnel đúng, và CloudFront **không** chuyển tiếp Host của người xem |
+| Upload bị S3 từ chối (403/SignatureDoesNotMatch) | Content-Length hoặc Content-Type lúc PUT khác với khai báo khi ký URL; hoặc file vượt giới hạn |

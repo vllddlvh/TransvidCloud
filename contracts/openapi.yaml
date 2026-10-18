@@ -1,0 +1,22 @@
+# DRAFT - Phương hoàn thiện ở Sprint 1. Chỉ liệt kê khung endpoint.
+openapi: 3.0.3
+info:
+  title: TransVidCloud API
+  version: 0.1.0
+servers:
+  - url: /api
+paths:
+  /auth/register: { post: { summary: Đăng ký, responses: { "201": { description: Created } } } }
+  /auth/login:    { post: { summary: Đăng nhập (JWT), responses: { "200": { description: OK } } } }
+  /projects:
+    get:  { summary: Liệt kê project của user, responses: { "200": { description: OK } } }
+    post: { summary: Tạo project, responses: { "201": { description: Created } } }
+  /projects/{projectId}/api-keys:
+    post: { summary: Tạo API key, responses: { "201": { description: Created } } }
+  /projects/{projectId}/videos:
+    get:  { summary: Liệt kê video (cursor), responses: { "200": { description: OK } } }
+    post: { summary: Khởi tạo video và nhận presigned URL, responses: { "201": { description: Created } } }
+  /videos/{videoId}/confirm:
+    post: { summary: Xác nhận đã upload (UPLOADING -> PENDING), responses: { "202": { description: Accepted } } }
+  /videos/{videoId}:
+    get: { summary: Chi tiết video, trạng thái, assets, responses: { "200": { description: OK } } }

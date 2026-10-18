@@ -1,0 +1,39 @@
+# Môi trường / bí mật
+.env
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Backend (Java)
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# Worker (Go)
+worker/bin/
+worker/*.exe
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# Video: bỏ qua mọi video, trừ video mẫu nhỏ cho test
+*.mp4
+*.mov
+*.mkv
+!worker/testdata/*.mp4
+
+# Rác hệ điều hành
+.DS_Store
+Thumbs.db

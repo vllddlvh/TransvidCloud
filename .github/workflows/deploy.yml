@@ -1,0 +1,76 @@
+# Triển khai thủ công lên AWS. Chỉ dùng sau khi hoàn tất: hạ tầng Terraform, role OIDC, repo ECR.
+# Cần cấu hình trong GitHub (Settings > Secrets and variables > Actions > Variables):
+#   AWS_DEPLOY_ROLE_ARN, ECR_REGISTRY, FRONTEND_BUCKET, CLOUDFRONT_DISTRIBUTION_ID
+name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Môi trường
+        type: choice
+        options: [dev, demo]
+        default: dev
+
+permissions:
+  id-token: write   # OIDC: không lưu access key trong GitHub
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+  TAG: ${{ github.sha }}
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build và push image (tag = commit SHA)
+        run: |
+          IMAGE=${{ vars.ECR_REGISTRY }}/tvc-${{ matrix.component }}
+          docker build -t "$IMAGE:$TAG" ${{ matrix.component }}
+          docker push "$IMAGE:$TAG"
+
+  deploy-api:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: ENV=${{ inputs.env }} ECR_REPO=${{ vars.ECR_REGISTRY }}/tvc-backend ./scripts/deploy-api.sh
+
+  deploy-worker:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: ENV=${{ inputs.env }} ./scripts/bump-worker-tag.sh
+
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          cd frontend && npm ci && npm run build
+          aws s3 sync dist "s3://${{ vars.FRONTEND_BUCKET }}" --delete
+          aws cloudfront create-invalidation --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/*"
