@@ -37,3 +37,9 @@ crash.log
 # Rác hệ điều hành
 .DS_Store
 Thumbs.db
+
+AGENTS.md
+DECISIONS.md
+PROGRESS.md
+
+.obsidian
