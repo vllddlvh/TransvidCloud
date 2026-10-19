@@ -15,8 +15,8 @@ cp .env.example .env     # rồi điền LOCALSTACK_AUTH_TOKEN (xem docs/LOCAL_A
 make infra      # LocalStack: S3, SQS+DLQ, DynamoDB
 make smoke      # kiểm tra tài nguyên đã tạo
 ```
-Chi tiết (chạy full stack, kiểm thử, CI/CD lên AWS): [`docs/LOCAL_AND_CICD.md`](docs/LOCAL_AND_CICD.md)
-Việc cần làm của từng nhóm: [`docs/EPICS.md`](docs/EPICS.md)
+Chi tiết (chạy full stack, kiểm thử, CI/CD lên AWS): [`docs/LOCAL_AND_CICD.md`](2.%20LOCAL_AND_CICD.md)
+Việc cần làm của từng nhóm: [`docs/EPICS.md`](1.%20Timelines.md)
 
 ## Cấu trúc repo
 ```
