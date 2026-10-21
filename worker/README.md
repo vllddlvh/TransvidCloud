@@ -22,9 +22,9 @@ Dockerfile       image có sẵn ffmpeg
 ## Quy tắc
 - **At-least-once:** job có thể bị giao lại. Dùng output key ổn định; video đã `COMPLETED` thì bỏ qua và xóa message.
 - Chỉ ghi nhóm trạng thái xử lý (`PROCESSING`, `COMPLETED`, `FAILED_*`).
-- Không phụ thuộc cấu trúc nội bộ của backend, chỉ phụ thuộc `contracts/`.
+- Không phụ thuộc cấu trúc nội bộ của backend, chỉ phụ thuộc `docs/contracts/`.
 - Công thức `BacklogPerInstance = messages / max(1, workers)` viết thành hàm thuần và có unit test.
 - Bắt đầu bằng POC FFmpeg chạy trên file local, độc lập AWS.
 - Tối ưu chi phí: giải mã một lần, tạo 360p/720p bằng filter `split`, preset `veryfast`, không tạo 1080p; dọn thư mục tạm sau mỗi job.
-- Kiểm tra ffprobe (thời lượng, độ phân giải, codec) theo `contracts/upload-limits.md`, sai thì `FAILED_VALIDATION`.
+- Kiểm tra ffprobe (thời lượng, độ phân giải, codec) theo `docs/contracts/upload-limits.md`, sai thì `FAILED_VALIDATION`.
 - Chạy trên Spot: bắt SIGTERM, dừng nhận job mới và trả message về queue (không xóa message dang dở).

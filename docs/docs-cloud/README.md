@@ -14,8 +14,8 @@ Bộ tài liệu dành cho Lưu và Nguyên, mô tả đường đi từ môi tr
 - [Tổng quan dự án](../../README.md) và [SRS](../introduction/3.%20SRS%20highlevel.md): bài toán SaaS + Developer API dùng chung một pipeline video.
 - [Timeline và phân công v4](../introduction/1.%20Timelines.md): căn cứ cho người phụ trách, phạm vi MVP, P0/P1 và M0–M5.
 - [Local và CI/CD](../introduction/2.%20LOCAL_AND_CICD.md): định hướng triển khai, được cụ thể hóa theo trạng thái repo trong Implement.
-- [ADR 0001](../adr/0001-dynamodb-only.md): quyết định đã chấp nhận về DynamoDB. [Bản kiến trúc Cloud ban đầu](../adr/CloudTransvid_Kien_Truc_Cloud.md) dùng để tham khảo lý do thiết kế; một số chi tiết đã được kế hoạch v4 điều chỉnh.
-- [Contracts](../../contracts/README.md): nguồn đối chiếu API, SQS message, trạng thái video, S3 key, bảng và giới hạn upload. Các contract còn ghi DRAFT cần review chung trước M1.
+- [ADR 0001 — DynamoDB only](../docs-common/5.%20Architecture%20decisions.md): quyết định đã chấp nhận về DynamoDB. Bản kiến trúc viết riêng giai đoạn đầu đã rút khỏi repo; tham chiếu lịch sử qua các mục ⛔ trong [SRS](../introduction/3.%20SRS%20highlevel.md) và git history.
+- [Contracts](../contracts/README.md): nguồn đối chiếu API, SQS message, trạng thái video, S3 key, bảng và giới hạn upload. Các contract còn ghi DRAFT cần review chung trước M1.
 
 Khi các nguồn khác nhau, dùng timeline v4 cho kế hoạch MVP, ADR đã chấp nhận cho quyết định kiến trúc, contract cho giao diện tích hợp, và file thực thi trong repo để mô tả khả năng chạy hiện tại. Điểm chưa thống nhất phải được ghi lại và xử lý cùng App, không tự đổi contract trong tài liệu Cloud.
 
@@ -35,4 +35,4 @@ Khi các nguồn khác nhau, dùng timeline v4 cho kế hoạch MVP, ADR đã ch
 
 Rà soát ngày **21/10/2026**: đã có Compose, script khởi tạo/smoke LocalStack, nginx, Makefile và khung workflow/script deploy. Các thư mục ứng dụng và Terraform chưa có mã triển khai; E2E và chaos còn là khung. Vì vậy các checklist dưới đây là **kế hoạch nghiệm thu**, không phải xác nhận đã chạy thành công trên local hoặc AWS.
 
-Khi hoàn thành một mốc, cập nhật bằng chứng (commit, môi trường, log/kết quả test và người kiểm tra). Quyết định kiến trúc mới được ghi thành ADR mới theo [quy ước ADR](../adr/README.md).
+Khi hoàn thành một mốc, cập nhật bằng chứng (commit, môi trường, log/kết quả test và người kiểm tra). Quyết định kiến trúc mới được ghi theo [quy ước ADR](../docs-common/5.%20Architecture%20decisions.md).

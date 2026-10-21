@@ -10,5 +10,5 @@ Chứa mọi thứ chỉ phục vụ chạy local; **không bao giờ được d
 | `nginx/` | Cấu hình nginx giả lập CloudFront (1 domain: `/`, `/api/*`, `/media/*`) |
 | `scripts/` | `smoke-test.sh`, `seed.sh`, `chaos-kill-worker.sh` |
 
-Quy tắc: tên tài nguyên, key schema, cấu hình queue ở đây phải **khớp `contracts/`** và Terraform.
-Hướng dẫn chạy: xem `docs/LOCAL_AND_CICD.md`.
+Quy tắc: tên tài nguyên, key schema, cấu hình queue ở đây phải **khớp `docs/contracts/`** và Terraform.
+Hướng dẫn chạy: xem `docs/introduction/2. LOCAL_AND_CICD.md`.

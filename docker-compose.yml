@@ -47,7 +47,11 @@ services:
       AWS_REGION: ap-southeast-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      SQS_QUEUE_NAME: tvc-local-jobs
+      # Chuẩn biến theo contract worker (docs-worker/3 mục 3.8)
+      TVC_INPUT_BUCKET: tvc-local-input
+      TVC_OUTPUT_BUCKET: tvc-local-output
+      TVC_DDB_VIDEOS: tvc-local-videos
+      TVC_JOBS_QUEUE_URL: http://localstack:4566/000000000000/tvc-local-jobs
       MAX_DURATION_SECONDS: ${MAX_DURATION_SECONDS:-300}
       MAX_HEIGHT_PIXELS: ${MAX_HEIGHT_PIXELS:-1080}
     # Không publish port để dùng được: docker compose up --scale worker=3

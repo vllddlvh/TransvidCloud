@@ -15,11 +15,11 @@ Tài liệu cho `frontend/` — giao diện SaaS Web của TransVidCloud (React 
 ## Tài liệu liên quan
 
 - **Template thiết kế:** [`Frontend template/`](Frontend%20template/) — bản tham chiếu YouTube-style: `DESIGN.md` (token, component, do's & don'ts), `theme.css`, `variables.css`, `tokens.json`. Đọc `4. Design System.md` để biết cách áp dụng vào app.
-- **Hợp đồng tích hợp:** [`contracts/`](../../contracts/) — nguồn sự thật cho API (`openapi.yaml`, đang DRAFT), trạng thái video (`video-state-machine.md`), giới hạn upload (`upload-limits.md`).
+- **Hợp đồng tích hợp:** [`docs/contracts/`](../contracts/) — nguồn sự thật cho API (`openapi.yaml`, đang DRAFT), trạng thái video (`video-state-machine.md`), giới hạn upload (`upload-limits.md`).
 - **Kế hoạch chung:** [`docs/introduction/1. Timelines.md`](../introduction/1.%20Timelines.md) — epic, phân công và mốc M0–M5 của cả nhóm.
 - **Chạy local:** [`docs/introduction/2. LOCAL_AND_CICD.md`](../introduction/2.%20LOCAL_AND_CICD.md) — chạy dev qua nginx ở `http://localhost:8000`.
 
 ## Quy tắc
 
 - Quyết định thiết kế quan trọng (đổi thư viện player, đổi cách quản lý state, đổi hệ thiết kế) thì cập nhật docs này và mở ADR nếu ảnh hưởng nhóm khác.
-- Muốn đổi endpoint, message, trạng thái: sửa `contracts/` trước (contract-first), không tự quyết trong frontend.
+- Muốn đổi endpoint, message, trạng thái: sửa `docs/contracts/` trước (contract-first), không tự quyết trong frontend.

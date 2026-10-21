@@ -1,4 +1,4 @@
-# contracts/ - Hợp đồng tích hợp (nguồn sự thật duy nhất)
+# docs/contracts/ - Hợp đồng tích hợp (nguồn sự thật duy nhất)
 
 **Phụ trách:** Phương (chủ trì) - cả 4 người review. Đây là thư mục quan trọng nhất ở Sprint 1.
 
@@ -15,8 +15,8 @@ lệch nhau, contract đúng, code sai (hoặc phải sửa contract trong cùng
 | `upload-limits.md` | Giới hạn upload cho MVP và nơi kiểm tra từng giới hạn | Backend, Worker, Frontend, Terraform |
 
 ## Quy trình sửa contract
-1. Mở PR chỉ sửa `contracts/` (hoặc kèm code thích ứng), gắn nhãn `contract-change`.
-2. Cần **duyệt của cả bên App và bên Cloud** (CODEOWNERS).
+1. Mở PR chỉ sửa `docs/contracts/` (hoặc kèm code thích ứng), gắn nhãn `contract-change`.
+2. Cần **duyệt của cả bên App và bên Cloud** (review trực tiếp trên PR).
 3. Ghi `schemaVersion` mới nếu thay đổi message SQS không tương thích ngược.
 4. Báo trong nhóm chat trước khi merge.
 

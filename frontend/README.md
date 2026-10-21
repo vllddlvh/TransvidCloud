@@ -8,7 +8,7 @@ trình phát HLS (hls.js), lấy link streaming và mã nhúng.
 ## Cấu trúc dự kiến
 ```
 src/pages/    trang: login, projects, videos, video detail
-src/api/      client gọi /api/* (sinh/viết theo contracts/openapi.yaml)
+src/api/      client gọi /api/* (sinh/viết theo docs/contracts/openapi.yaml)
 src/player/   HLS player và mã nhúng
 ```
 

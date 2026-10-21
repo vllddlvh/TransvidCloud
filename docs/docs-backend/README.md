@@ -15,7 +15,7 @@ Tài liệu thiết kế và phát triển **Spring Boot Backend** của TransVi
 ## Nguồn sự thật
 
 - **Giao diện giữa các thành phần:** [`../contracts/`](../contracts/). Đặc biệt: `openapi.yaml`, `video-state-machine.md`, `dynamodb-tables.md`, `sqs-job-message.schema.json`, `s3-key-convention.md`, `upload-limits.md`.
-- **Tổng quan và lệnh chạy repo:** [`../README.md`](../README.md) cùng tài liệu dùng chung trong `../docs/`.
+- **Tổng quan và lệnh chạy repo:** [`../../README.md`](../../README.md) cùng tài liệu dùng chung trong [`docs/`](../README.md).
 - **Thiết kế nội bộ Backend:** các file trong thư mục này.
 
 Các contract hiện được đánh dấu **DRAFT**. Khi chưa có định nghĩa trong contract, tài liệu này sẽ đánh dấu `TBD` hoặc `Proposed`, không tự tạo một hợp đồng khác. Nếu code, docs và contract mâu thuẫn, cần xác minh với nhóm và cập nhật nguồn có thẩm quyền trong cùng thay đổi.

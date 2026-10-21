@@ -2,7 +2,7 @@
 
 > **Phụ trách:** Vũ (nhóm App) · **Thư mục code:** `worker/`
 > **Công nghệ:** Go + FFmpeg/ffprobe, chạy trong Docker trên EC2 (ASG, Spot)
-> **Nguồn sự thật:** `contracts/` — khi code và contract lệch nhau, contract đúng, code sai.
+> **Nguồn sự thật:** `docs/contracts/` — khi code và contract lệch nhau, contract đúng, code sai.
 
 Tài liệu riêng của dịch vụ Worker — bên nhận job từ SQS, transcode video bằng FFmpeg và ghi trạng thái vào DynamoDB.
 
@@ -16,11 +16,10 @@ Tài liệu riêng của dịch vụ Worker — bên nhận job từ SQS, transc
 
 ## Tài liệu liên quan
 
-- `contracts/` — hợp đồng tích hợp (state machine, SQS schema, S3 key, DynamoDB, upload limits)
+- `docs/contracts/` — hợp đồng tích hợp (state machine, SQS schema, S3 key, DynamoDB, upload limits)
 - `docs/introduction/1. Timelines.md` — epic và phân việc chung của cả nhóm
-- `docs/adr/0001-dynamodb-only.md` — lý do chỉ dùng DynamoDB
-- `docs/adr/CloudTransvid_Kien_Truc_Cloud.md` — kiến trúc cloud tổng thể
+- `docs/docs-common/5. Architecture decisions.md` — lý do chỉ dùng DynamoDB (ADR 0001)
 
 ## Trạng thái
 
-`DRAFT` — viết lại theo `contracts/` đã chốt. Chỗ nào contract chưa chốt sẽ ghi rõ **(chờ chốt)**.
+`DRAFT` — viết theo `docs/contracts/` hiện tại, cập nhật linh hoạt theo tiến độ; các phần DRAFT được review chung trước M1. Chỗ nào contract chưa chốt sẽ ghi rõ **(chờ chốt)**.
