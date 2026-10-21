@@ -11,7 +11,7 @@ Tài liệu riêng của dịch vụ Worker — bên nhận job từ SQS, transc
 | [[1. Introduction]] | Worker là gì, phạm vi trách nhiệm, tech stack, nguyên tắc | Cả nhóm |
 | [[2. Business]] | Luồng nghiệp vụ: vòng đời job, các nhánh lỗi, retry/DLQ, quy tắc nghiệp vụ | Cả nhóm, báo cáo |
 | [[3. Architecture]] | Kiến trúc nội bộ Go, lệnh FFmpeg, cấu hình, IAM, SIGTERM/Spot, observability | Vũ, Nguyên, Lưu |
-| [[4. Timelines]] | Kế hoạch 3 tuần (Sprint 1-3) theo epic A4, A5 và các điểm phối hợp | Vũ, cả nhóm |
+| [[4. Timelines]] | Kế hoạch từ tuần 7 đến hạn nộp tuần 10; A4/A5, phối hợp C5/A8 và báo cáo | Vũ, cả nhóm |
 | [[5. Contact docs]] | Hợp đồng giao tiếp của worker: SQS, DynamoDB, S3, log, metric, biến môi trường | Phương, Lưu, Nguyên |
 
 ## Tài liệu liên quan
