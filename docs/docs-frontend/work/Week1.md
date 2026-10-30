@@ -19,15 +19,16 @@ Người dùng mở `http://localhost:8000`, đăng nhập (mock JWT), tạo/xem
 
 Khởi tạo `frontend/` (hiện chỉ có README) thành app chạy được, áp design token và layout chuẩn. Task này vốn không phụ thuộc backend — giữ nguyên như kế hoạch cũ.
 
-- [ ] **F1.1 Scaffold Vite + React + TypeScript**
+- [x] **F1.1 Scaffold Vite + React + TypeScript**
   - `npm create vite@latest` (react-ts), Node 20 theo [LOCAL_AND_CICD](../../introduction/2.%20LOCAL_AND_CICD.md) mục 1.1
   - Tạo cấu trúc thư mục theo [1. Introduction.md](../1.%20Introduction.md): `src/pages/`, `src/api/`, `src/player/` (player chỉ tạo folder + file trống, code ở tuần 2)
   - Dev server cổng **5173**, truy cập qua `http://localhost:8000` khi bật stack `full` (nginx proxy); chạy được cả `npm run dev` đơn lẻ khi không bật stack — không cần Docker cho tuần này
-- [ ] **F1.2 Áp design token + layout**
+  - *Chưa kiểm chứng:* đường nginx `localhost:8000` (không bật stack Docker tuần này); 5173 vẫn `--strictPort` nhưng máy đang có project khác chiếm nên preview chạy ở 5180
+- [x] **F1.2 Áp design token + layout**
   - Import `Frontend template/variables.css` vào global CSS; mọi component dùng `var(--...)` — xem [4. Design System.md](../4.%20Design%20System.md) mục 6
   - **Sidebar** trái 240px fixed (nav item 40px cao, icon 24px + label 14px; active = `#0f0f0f`, hover fill xám nhạt) và **Header** 56px sticky (hamburger + logo trái, search input giữa ~640px, icon button + Sign in phải) — tham chiếu [DESIGN.md](../Frontend%20template/DESIGN.md) mục Components
   - Tuân thủ Do's & Don'ts: không `#000000`, không shadow, không gradient, không vượt font 20px; `#065fd4` chỉ dùng cho link/outline button; `#ff0000` chỉ cho logo play triangle
-- [ ] **F1.3 Router + khung trang**
+- [x] **F1.3 Router + khung trang**
   - React Router với các route: `/login`, `/projects`, `/projects/:id/videos`, `/videos/:id` (chi tiết), `/embed` (chỉ tạo route trống)
   - Mỗi route hiển thị placeholder dùng đúng layout (login và embed **không** có sidebar/header)
   - Toast/thông báo dùng Card (nền trắng, border 1px `#c6c6c6`, radius 10px) — phục vụ xử lý lỗi chung ở [3. Pages & Features.md](../3.%20Pages%20%26%20Features.md) cuối trang
@@ -38,17 +39,17 @@ Khởi tạo `frontend/` (hiện chỉ có README) thành app chạy được, �
 
 Nền tảng của chế độ độc lập: **một lớp mock trung thành với contract**, sau đó làm trang login/project trên nền đó.
 
-- [ ] **F2.1 Mock API layer (làm trước F2.2)**
+- [x] **F2.1 Mock API layer (làm trước F2.2)**
   - Cài **MSW** (Mock Service Worker) — chặn cả `fetch` lẫn `XMLHttpRequest`, nên progress bar upload ở F3 vẫn hoạt động thật trên mock
   - `src/api/` định nghĩa **interface duy nhất** cho từng nhóm API (auth, projects, videos): hàm signature, kiểu request/response lấy nguyên từ `docs/contracts/openapi.yaml` và [video-state-machine.md](../../contracts/video-state-machine.md)
   - Hai implementation phía sau interface: **mock** (MSW handler + fixture data) và **real** (gọi `/api/...` thật) — chọn bằng biến môi trường `VITE_API_MODE=mock|real`, mặc định tuần này là `mock`. **UI không bao giờ import trực tiếp MSW hay biết chế độ đang chạy**
   - Fixture data: 1 user test, 2–3 project, video mẫu ở **mọi trạng thái** (`UPLOADING`, `PENDING`, `PROCESSING`, `COMPLETED` có assets, cả ba `FAILED_*` kèm `errorCode`) — dùng lại cho F4/F5 tuần 2 và cho demo UI mọi nhánh trạng thái
   - Mock hành vi lỗi: sai mật khẩu → 401, token "hết hạn" sau N phút → 401, `POST videos` khai báo vượt 200 MB → 413, sai định dạng → 422 — phủ đúng bảng xử lý lỗi trong [3. Pages & Features.md](../3.%20Pages%20%26%20Features.md)
-- [ ] **F2.2 Trang `/login`**
+- [x] **F2.2 Trang `/login`**
   - Form email + mật khẩu → login (qua interface ở trên); lưu token mock; redirect `/projects`
   - Sai thông tin: thông báo inline, **không reload trang**. Component: pill button outline (`#065fd4` border + text, nền trắng, radius 18px) + input pill
   - Đăng ký qua UI **không thuộc MVP** — trong mock, user test có sẵn; đăng ký thật chỉ cần khi hợp nhất tuần 9 (curl `/auth/register`)
-- [ ] **F2.3 Guard + danh sách / tạo project**
+- [x] **F2.3 Guard + danh sách / tạo project**
   - Route guard: trang cần đăng nhập redirect về `/login` khi chưa có token; token hết hạn (mock) → đá về login kèm thông báo phiên hết hạn
   - `/projects`: danh sách card project (tên, số video, thời gian tạo); nút "Tạo project" (pill button neutral) mở form tên + mô tả; click card → `/projects/:id/videos` (trang placeholder ở tuần này)
   - Tạo project qua mock cập nhật fixture → thấy kết quả ngay không cần backend
@@ -59,18 +60,28 @@ Nền tảng của chế độ độc lập: **một lớp mock trung thành v�
 
 Luồng presigned 3 bước dựng **đầy đủ UI/state**, chỉ phần "thật" của S3 hoãn tới tuần 9.
 
-- [ ] **F3.1 Modal upload + kiểm tra client**
+- [x] **F3.1 Modal upload + kiểm tra client**
   - Nút "Tải video lên" ở trang danh sách video mở modal (dùng Card)
   - Kiểm tra chỉ để UX (không phải lớp bảo vệ — nguồn sự thật là [upload-limits.md](../../contracts/upload-limits.md)): dung lượng ≤ **200 MB**, đuôi **mp4/mov/mkv/webm**; vi phạm → chặn ngay kèm thông báo cụ thể
-- [ ] **F3.2 Luồng presigned 3 bước (mock)**
+- [x] **F3.2 Luồng presigned 3 bước (mock)**
   1. Khai báo `sizeBytes`, `contentType` → nhận presigned URL (mock trả URL giả, hết hạn 15 phút); mock trả 413/422 khi khai báo vượt giới hạn → hiện lỗi, dừng
   2. PUT file bằng **XMLHttpRequest** để có progress bar (fetch không hỗ trợ upload progress) — MSW chặn XHR và mô phỏng tiến trình theo thời gian; thêm cơ chế mock lỗi mạng giữa chừng để kiểm tra nút thử lại
   3. `confirm` → đóng modal, video xuất hiện trong danh sách, trạng thái `UPLOADING → PENDING`; mock có thể tiếp tục tự chuyển `PENDING → PROCESSING → COMPLETED` sau vài giây để tuần 2 test polling/player sớm
-- [ ] **F3.3 Ghi nhận hợp đồng — đầu ra quan trọng nhất của tuần này**
+  - *Không làm:* nhánh tự chuyển `PENDING → PROCESSING → COMPLETED`. Frontend tự sinh trạng thái đi ngược state machine (worker sở hữu các chuyển này) và Week1 chưa có polling; fixture `PROCESSING`/`COMPLETED` đã đủ để dựng UI tuần 2. Ghi trong `5. API Integration.md` mục 5.6.
+- [x] **F3.3 Ghi nhận hợp đồng — đầu ra quan trọng nhất của tuần này**
   - Mỗi giả định khi viết mock (tên field, mã lỗi, dạng response, thứ tự bước) ghi ngay vào `5. API Integration.md` với nhãn **"giả định — chờ Phương xác nhận"** — đây là checklist đối chiếu khi hợp nhất tuần 9
   - Nếu thấy contract thiếu/thất thiển (vd chưa định nghĩa error body, cursor pagination), **không tự bịa trong mock**: mở issue/ghi vào `docs/contracts/` để Phương xử lý (contract-first)
 
 **Xong khi:** upload file 10 MB mp4 qua mock chạy đủ 3 bước, progress bar chuyển động, kết thúc ở `PENDING`; file 201 MB bị chặn ở client lẫn bị mock từ chối 413; ngắt mạng giữa chừng (tắt MSW) thì nút thử lại hoạt động.
+
+---
+
+## Kết quả (kiểm chứng 28/10)
+
+- `npm test`: 77 unit + contract test pass. `npm run build` (tsc strict + Vite) và `npm run api:check` (không lệch types sinh từ contract) pass.
+- `npm run test:e2e`: 10/10 kịch bản Chromium pass — login sai/đúng, tạo project và giữ qua reload, upload 10 MB presign→PUT→confirm với progress, chặn sai đuôi và khai báo 201 MB (client + 413 từ mock), PUT lỗi một lần rồi retry, confirm lỗi 503 rồi retry **chỉ** gọi confirm (1 create / 1 PUT / 2 confirm, PUT không mang bearer), phiên hết hạn khi đang mở và khi reload, real mode không backend báo lỗi thay vì rơi về fixture, mobile 390px + embed không chrome.
+- Thao tác tay trên preview `http://localhost:5180`: đăng nhập, tạo project, upload file mp4 thật tới `PENDING`, desktop 1440px (sidebar thu/giãn đúng, tên project 100 ký tự không vỡ layout, không cuộn ngang), mobile 390px (drawer + scrim), console không lỗi/không cảnh báo.
+- **Chưa kiểm chứng — dời tuần 9:** backend `/api` thật, presigned S3 + CORS + HeadObject, `localhost:8000` qua nginx stack `full`. HLS player và polling là Week 2. Toàn bộ schema/error vẫn mang nhãn DRAFT chờ Phương + App/Cloud duyệt.
 
 ---
 
