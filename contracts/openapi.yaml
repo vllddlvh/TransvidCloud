@@ -1,22 +1,905 @@
-# DRAFT - Phương hoàn thiện ở Sprint 1. Chỉ liệt kê khung endpoint.
 openapi: 3.0.3
 info:
   title: TransVidCloud API
   version: 0.1.0
+  description: |
+    Hợp đồng REST API chính thức (SSOT) cho **TransVidCloud Backend** — phục vụ đồng thời:
+    - **SaaS Web**: Xác thực qua `BearerAuth` (JWT).
+    - **Developer Platform (PaaS API)**: Xác thực qua `ApiKeyAuth` (header `X-API-Key`) gắn theo từng Project.
+
 servers:
   - url: /api
+    description: Đường dẫn tương đối dùng chung cho Local (nginx) và Cloud (CloudFront / Cloudflare Tunnel)
+
+tags:
+  - name: Auth
+    description: Đăng ký và đăng nhập tài khoản SaaS (JWT)
+  - name: Projects
+    description: Quản lý không gian làm việc (Project) của người dùng SaaS
+  - name: API Keys
+    description: Quản lý API Key theo Project dành cho tích hợp Developer API
+  - name: Videos
+    description: Khởi tạo upload (Presigned URL), xác nhận xử lý (SQS) và truy vấn trạng thái/assets video
+
 paths:
-  /auth/register: { post: { summary: Đăng ký, responses: { "201": { description: Created } } } }
-  /auth/login:    { post: { summary: Đăng nhập (JWT), responses: { "200": { description: OK } } } }
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerUser
+      summary: Đăng ký tài khoản SaaS mới
+      description: Tạo tài khoản mới với email duy nhất (đảm bảo bằng DynamoDB `TransactWriteItems`) và trả về JWT.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Tạo tài khoản thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginUser
+      summary: Đăng nhập và nhận JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
   /projects:
-    get:  { summary: Liệt kê project của user, responses: { "200": { description: OK } } }
-    post: { summary: Tạo project, responses: { "201": { description: Created } } }
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: Liệt kê danh sách Project của người dùng hiện tại
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Danh sách Project thuộc quyền sở hữu của user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: Tạo Project mới
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Tạo Project thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdParam"
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: Xem chi tiết một Project
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Thông tin chi tiết Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      summary: Cập nhật thông tin hoặc cấu hình Webhook của Project
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: Cập nhật Project thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    delete:
+      tags: [Projects]
+      operationId: deleteProject
+      summary: Xóa Project
+      description: Xóa Project thuộc quyền sở hữu của user (từ chối nếu còn video đang xử lý).
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Đã xóa Project thành công
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
   /projects/{projectId}/api-keys:
-    post: { summary: Tạo API key, responses: { "201": { description: Created } } }
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdParam"
+    get:
+      tags: [API Keys]
+      operationId: listApiKeys
+      summary: Liệt kê các API Key của Project
+      description: Chỉ trả về metadata và `keyHash` (không bao giờ trả lại `rawKey` sau khi tạo).
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Danh sách API Key của Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    post:
+      tags: [API Keys]
+      operationId: createApiKey
+      summary: Tạo API Key mới cho Project
+      description: Sinh API Key mới, chỉ lưu bản băm SHA-256 (`keyHash`) vào DynamoDB và trả về `rawKey` duy nhất một lần trong response này.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiKeyRequest"
+      responses:
+        "201":
+          description: Tạo API Key thành công (lưu lại `rawKey` ngay vì sẽ không hiển thị lại)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyCreatedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /projects/{projectId}/api-keys/{keyHash}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdParam"
+      - $ref: "#/components/parameters/KeyHashParam"
+    delete:
+      tags: [API Keys]
+      operationId: revokeApiKey
+      summary: Thu hồi (xóa) API Key
+      description: Xóa `keyHash` khỏi bảng `apikeys`, làm key mất hiệu lực ngay lập tức.
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Đã thu hồi API Key thành công
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /projects/{projectId}/videos:
-    get:  { summary: Liệt kê video (cursor), responses: { "200": { description: OK } } }
-    post: { summary: Khởi tạo video và nhận presigned URL, responses: { "201": { description: Created } } }
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdParam"
+    get:
+      tags: [Videos]
+      operationId: listVideosByProject
+      summary: Liệt kê danh sách Video trong Project (phân trang Cursor)
+      description: Truy vấn GSI `project-index` theo thứ tự `createdAt` giảm dần, sử dụng cursor mã hóa từ `LastEvaluatedKey`.
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Trang danh sách Video kèm `nextCursor`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoPageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    post:
+      tags: [Videos]
+      operationId: initVideoUpload
+      summary: Khởi tạo Video và nhận S3 Presigned PUT URL
+      description: |
+        Kiểm tra giới hạn dung lượng (`sizeBytes <= 209715200`) và định dạng (`contentType`).
+        Tạo bản ghi Video ở trạng thái `UPLOADING` và trả về Presigned PUT URL có hiệu lực 15 phút (ký kèm `Content-Length` và `Content-Type`).
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitVideoRequest"
+      responses:
+        "201":
+          description: Khởi tạo Video và cấp Presigned URL thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitVideoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "413":
+          $ref: "#/components/responses/PayloadTooLargeError"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityError"
+
   /videos/{videoId}/confirm:
-    post: { summary: Xác nhận đã upload (UPLOADING -> PENDING), responses: { "202": { description: Accepted } } }
+    parameters:
+      - $ref: "#/components/parameters/VideoIdParam"
+    post:
+      tags: [Videos]
+      operationId: confirmVideoUpload
+      summary: Xác nhận đã tải video lên S3 (UPLOADING -> PENDING)
+      description: |
+        Gọi S3 `HeadObject` để xác minh object tồn tại và dung lượng không vượt giới hạn, sau đó chuyển trạng thái `UPLOADING -> PENDING` và gửi job message (`schemaVersion: 1`) vào SQS.
+        Thao tác này là **idempotent**: nếu video đã ở `PENDING`, `PROCESSING` hoặc `COMPLETED`, trả về `200 OK` với thông tin hiện tại mà không gửi trùng message SQS.
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "202":
+          description: Xác nhận thành công, đã chuyển sang `PENDING` và đưa job vào hàng đợi SQS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "200":
+          description: Video đã được xác nhận trước đó (idempotent response)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityError"
+
   /videos/{videoId}:
-    get: { summary: Chi tiết video, trạng thái, assets, responses: { "200": { description: OK } } }
+    parameters:
+      - $ref: "#/components/parameters/VideoIdParam"
+    get:
+      tags: [Videos]
+      operationId: getVideo
+      summary: Lấy chi tiết Video, trạng thái xử lý và danh sách Assets
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Chi tiết Video, trạng thái và các đường dẫn phát HLS / thumbnail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    delete:
+      tags: [Videos]
+      operationId: deleteVideo
+      summary: Xóa Video
+      description: Xóa bản ghi Video (từ chối `409 Conflict` nếu video đang ở trạng thái `PROCESSING`).
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "204":
+          description: Đã xóa Video thành công
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Access Token cấp qua `/api/auth/login` hoặc `/api/auth/register` (dành cho SaaS Web).
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Project API Key cấp qua `/api/projects/{projectId}/api-keys` (dành cho Developer Platform / hệ thống ngoài).
+
+  parameters:
+    ProjectIdParam:
+      name: projectId
+      in: path
+      required: true
+      description: Định danh của Project (ví dụ `prj_1c05d9`)
+      schema:
+        type: string
+    VideoIdParam:
+      name: videoId
+      in: path
+      required: true
+      description: Định danh của Video (ví dụ `vid_4a77e1`)
+      schema:
+        type: string
+    KeyHashParam:
+      name: keyHash
+      in: path
+      required: true
+      description: Mã băm SHA-256 định danh API Key cần thu hồi
+      schema:
+        type: string
+    CursorParam:
+      name: cursor
+      in: query
+      required: false
+      description: Chuỗi cursor (Base64URL mã hóa từ `LastEvaluatedKey`) nhận được từ trang trước
+      schema:
+        type: string
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      description: Số lượng bản ghi tối đa trên một trang
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    BadRequestError:
+      description: Dữ liệu đầu vào hoặc tham số truy vấn không hợp lệ (`VALIDATION_ERROR`, `INVALID_CURSOR`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnauthorizedError:
+      description: Thiếu hoặc sai thông tin xác thực (`UNAUTHORIZED`, `TOKEN_EXPIRED`, `INVALID_API_KEY`, `INVALID_CREDENTIALS`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ForbiddenError:
+      description: Không có quyền truy cập tài nguyên thuộc người dùng hoặc Project khác (`ACCESS_DENIED`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFoundError:
+      description: Không tìm thấy tài nguyên yêu cầu (`RESOURCE_NOT_FOUND`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ConflictError:
+      description: Xung đột trạng thái hoặc dữ liệu trùng lặp (`EMAIL_ALREADY_EXISTS`, `INVALID_STATE_TRANSITION`, `RESOURCE_IN_USE`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLargeError:
+      description: Dung lượng video khai báo vượt quá giới hạn tối đa 200 MB (`UPLOAD_LIMIT_EXCEEDED`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntityError:
+      description: Định dạng không được hỗ trợ hoặc kiểm tra object trên S3 thất bại (`UNSUPPORTED_CONTENT_TYPE`, `S3_OBJECT_NOT_FOUND`, `UPLOAD_SIZE_MISMATCH`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    # --- Auth Schemas ---
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 100
+          example: Secret123!
+        fullName:
+          type: string
+          maxLength: 100
+          example: Nguyen Van A
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: Secret123!
+
+    UserSummary:
+      type: object
+      required: [userId, email, createdAt]
+      properties:
+        userId:
+          type: string
+          example: usr_8b31a2
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        fullName:
+          type: string
+          example: Nguyen Van A
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:00:00Z"
+
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, expiresInSeconds, user]
+      properties:
+        accessToken:
+          type: string
+          description: JWT Access Token (HMAC-SHA256)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresInSeconds:
+          type: integer
+          format: int64
+          example: 86400
+        user:
+          $ref: "#/components/schemas/UserSummary"
+
+    # --- Project Schemas ---
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          example: E-Learning Course Videos
+        description:
+          type: string
+          maxLength: 500
+          example: Kho video bài giảng học kỳ 1
+        webhookUrl:
+          type: string
+          format: uri
+          description: URL nhận callback khi video hoàn tất xử lý (P1)
+          example: https://elearning.example.com/webhooks/transvidcloud
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 500
+        webhookUrl:
+          type: string
+          format: uri
+          nullable: true
+
+    ProjectResponse:
+      type: object
+      required: [projectId, ownerId, name, createdAt, updatedAt]
+      properties:
+        projectId:
+          type: string
+          example: prj_1c05d9
+        ownerId:
+          type: string
+          example: usr_8b31a2
+        name:
+          type: string
+          example: E-Learning Course Videos
+        description:
+          type: string
+          example: Kho video bài giảng học kỳ 1
+        webhookUrl:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:05:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:05:00Z"
+
+    ProjectListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectResponse"
+
+    # --- API Key Schemas ---
+    CreateApiKeyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: E-Learning Backend Key
+
+    ApiKeyCreatedResponse:
+      type: object
+      required: [keyHash, projectId, name, rawKey, keyPrefix, createdAt]
+      properties:
+        keyHash:
+          type: string
+          description: Mã băm SHA-256 lưu trong DynamoDB (dùng làm ID khi thu hồi)
+          example: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        projectId:
+          type: string
+          example: prj_1c05d9
+        name:
+          type: string
+          example: E-Learning Backend Key
+        rawKey:
+          type: string
+          description: Giá trị API Key đầy đủ — chỉ trả về một lần duy nhất lúc khởi tạo
+          example: tvc_live_7f9a8b2c4d6e1f3a5b7c9d0e2f4a6b8c
+        keyPrefix:
+          type: string
+          description: Tiền tố nhận diện key để hiển thị trên giao diện quản trị
+          example: tvc_live_7f9a...
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:10:00Z"
+
+    ApiKeyMetadataResponse:
+      type: object
+      required: [keyHash, projectId, name, keyPrefix, createdAt]
+      properties:
+        keyHash:
+          type: string
+          example: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        projectId:
+          type: string
+          example: prj_1c05d9
+        name:
+          type: string
+          example: E-Learning Backend Key
+        keyPrefix:
+          type: string
+          example: tvc_live_7f9a...
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:10:00Z"
+
+    ApiKeyListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiKeyMetadataResponse"
+
+    # --- Video & Upload Schemas ---
+    InitVideoRequest:
+      type: object
+      required: [title, filename, sizeBytes, contentType]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Bài giảng Chương 1 - Điện toán đám mây
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Tên file gốc để xác định phần mở rộng hợp lệ (`mp4`, `mov`, `mkv`, `webm`)
+          example: lecture-01.mp4
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 209715200
+          description: Dung lượng file tính bằng byte (tối đa 200 MB = 209715200 bytes theo `contracts/upload-limits.md`)
+          example: 52428800
+        contentType:
+          type: string
+          enum:
+            - video/mp4
+            - video/quicktime
+            - video/x-matroska
+            - video/webm
+          example: video/mp4
+
+    PresignedUploadInfo:
+      type: object
+      required: [presignedUrl, method, expiresInSeconds, requiredHeaders]
+      properties:
+        presignedUrl:
+          type: string
+          format: uri
+          description: URL S3 Presigned PUT để client đẩy trực tiếp file lên bucket input
+        method:
+          type: string
+          enum: [PUT]
+          example: PUT
+        expiresInSeconds:
+          type: integer
+          example: 900
+        requiredHeaders:
+          type: object
+          additionalProperties:
+            type: string
+          description: Các HTTP header mà client bắt buộc gửi khớp khi gọi PUT lên `presignedUrl`
+          example:
+            Content-Type: video/mp4
+            Content-Length: "52428800"
+
+    InitVideoResponse:
+      type: object
+      required: [video, upload]
+      properties:
+        video:
+          $ref: "#/components/schemas/VideoResponse"
+        upload:
+          $ref: "#/components/schemas/PresignedUploadInfo"
+
+    VideoStatus:
+      type: string
+      description: Trạng thái vòng đời của Video theo `contracts/video-state-machine.md`
+      enum:
+        - UPLOADING
+        - PENDING
+        - PROCESSING
+        - COMPLETED
+        - FAILED_VALIDATION
+        - FAILED_TRANSCODE
+        - FAILED_STORAGE
+
+    VideoErrorCode:
+      type: string
+      nullable: true
+      description: Mã lỗi chi tiết do Worker ghi nhận khi trạng thái là `FAILED_*`
+      enum:
+        - NOT_A_VIDEO
+        - CODEC_UNSUPPORTED
+        - DURATION_EXCEEDED
+        - HEIGHT_EXCEEDED
+        - FFMPEG_TIMEOUT
+        - FFMPEG_ERROR
+        - S3_GET_FAILED
+        - S3_PUT_FAILED
+
+    VideoAssets:
+      type: object
+      description: Các đường dẫn phát HLS và thumbnail đã ghép sẵn `TVC_MEDIA_BASE_URL` (chỉ có mặt khi `status = COMPLETED`)
+      properties:
+        masterPlaylistUrl:
+          type: string
+          example: /media/prj_1c05d9/vid_4a77e1/hls/master.m3u8
+        hls360Url:
+          type: string
+          example: /media/prj_1c05d9/vid_4a77e1/hls/360p/index.m3u8
+        hls720Url:
+          type: string
+          example: /media/prj_1c05d9/vid_4a77e1/hls/720p/index.m3u8
+        thumbnailUrl:
+          type: string
+          example: /media/prj_1c05d9/vid_4a77e1/thumb/default.jpg
+
+    VideoResponse:
+      type: object
+      required: [videoId, projectId, title, status, sizeBytes, contentType, attemptCount, createdAt, updatedAt]
+      properties:
+        videoId:
+          type: string
+          example: vid_4a77e1
+        projectId:
+          type: string
+          example: prj_1c05d9
+        title:
+          type: string
+          example: Bài giảng Chương 1 - Điện toán đám mây
+        status:
+          $ref: "#/components/schemas/VideoStatus"
+        sizeBytes:
+          type: integer
+          format: int64
+          example: 52428800
+        contentType:
+          type: string
+          example: video/mp4
+        attemptCount:
+          type: integer
+          example: 1
+        errorCode:
+          $ref: "#/components/schemas/VideoErrorCode"
+        assets:
+          $ref: "#/components/schemas/VideoAssets"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T09:15:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T09:16:02Z"
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    VideoPageResponse:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoResponse"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Chuỗi cursor truyền vào query param `cursor` cho lần gọi tiếp theo (`null` nếu đã hết dữ liệu)
+          example: eyJ2aWRlb0lkIjoidmlkXzRhNzdlMSIsImNyZWF0ZWRBdCI6IjIwMjYtMTAtMzFUMDk6MTU6MDBaIn0
+        hasMore:
+          type: boolean
+          example: false
+
+    # --- Common Error Schema ---
+    ErrorResponse:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:
+          type: string
+          description: Mã lỗi định danh máy đọc được (machine-readable error code)
+          example: UPLOAD_LIMIT_EXCEEDED
+        message:
+          type: string
+          description: Thông báo mô tả lỗi
+          example: Dung lượng file vượt quá giới hạn tối đa 200 MB (209715200 bytes)
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-31T09:15:00Z"
+        details:
+          type: object
+          additionalProperties: true
+          description: Thông tin bổ sung về lỗi (ví dụ danh sách trường vi phạm validation)
