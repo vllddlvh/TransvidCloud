@@ -26,6 +26,19 @@ Mỗi acceptance criterion phải có ít nhất một cách kiểm chứng ho�
 | Project build & context load thành công | `./mvnw -B clean verify` | `PASS` | `TransvidCloudBackendApplicationTests` |
 | Ứng dụng khởi chạy và truy cập được trên `localhost:8080/api/actuator/health` | `curl -i http://localhost:8080/api/actuator/health` | `PASS` | HTTP 200 `{"status":"UP"}` |
 
+## Zero Regression & Real Verification Policy
+
+1. **Zero Regression ("Everything in the past was okay, so now it must be okay"):**
+   - Mọi feature mới khi hoàn thành tuyệt đối không được làm hỏng hay suy giảm bất kỳ tính năng nào đã xây dựng trước đó.
+   - Toàn bộ test suite tích lũy (bao gồm cả Unit Tests và Integration Tests của tất cả các feature quá khứ) bắt buộc phải chạy lại và **PASS 100%** trong lệnh verify chính thức `./scripts/verify.sh` (`./mvnw -B clean verify`). Nếu có bất kỳ test cũ nào fail, feature mới bị coi là **FAIL/REGRESSION** và không được phép nghiệm thu.
+
+2. **Real Verification (Tiêu chuẩn kiểm chứng thực tế tối thiểu):**
+   - Unit Test với Mockito/MockBean chỉ là công cụ hỗ trợ cục bộ trong quá trình phát triển (WIP), không phản ánh đầy đủ tích hợp hạ tầng và hành vi dữ liệu thực tế.
+   - Để được công nhận là **Real Verification** cho một Feature:
+     - **Tối thiểu phải có Integration Test (`*IT.java`)** giao tiếp trực tiếp với các dịch vụ thực tế (DynamoDB, S3, SQS trên LocalStack / Testcontainers), kiểm tra đúng schema, luồng dữ liệu và transaction thực.
+     - **E2E / System Test**: Đối với các luồng liên module (Upload -> S3 -> Confirm -> SQS -> Worker -> Video HLS), bắt buộc phải có kiểm chứng E2E toàn stack (`make e2e` hoặc Postman Newman runner) để chứng minh tính đúng đắn trọn vòng đời.
+   - Tuyệt đối không chấp nhận một Feature nghiệp vụ chỉ dựa vào Unit test cô lập làm bằng chứng hoàn thành.
+
 ## CI/CD quality gates
 
 - Required checks trước merge: GitHub Actions workflow `ci.yml` (`cd backend && ./mvnw -B verify`).
