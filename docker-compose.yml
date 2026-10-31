@@ -1,4 +1,4 @@
-# Local stack. Profiles:
+cl# Local stack. Profiles:
 #   (mặc định)  chỉ localstack            -> make infra
 #   app / full  thêm backend, worker      -> make up
 #   full        thêm nginx giả lập CloudFront
@@ -40,6 +40,8 @@ services:
   worker:
     build: ./worker
     profiles: [app, full]
+    init: true                 # tini: thu hồi process con FFmpeg, chuyển SIGTERM đúng
+    stop_grace_period: 60s     # đủ cho dừng FFmpeg + release message 30s
     depends_on:
       localstack: { condition: service_healthy }
     environment:
@@ -52,6 +54,7 @@ services:
       TVC_OUTPUT_BUCKET: tvc-local-output
       TVC_DDB_VIDEOS: tvc-local-videos
       TVC_JOBS_QUEUE_URL: http://localstack:4566/000000000000/tvc-local-jobs
+      TVC_TMP_DIR: /tmp/tvc
       MAX_DURATION_SECONDS: ${MAX_DURATION_SECONDS:-300}
       MAX_HEIGHT_PIXELS: ${MAX_HEIGHT_PIXELS:-1080}
     # Không publish port để dùng được: docker compose up --scale worker=3
@@ -65,3 +68,13 @@ services:
       - ./local/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # Build mock tĩnh trước: cd frontend && npm run build:mock
+  edge-static:
+    image: nginx:alpine
+    profiles: [static]
+    ports:
+      - "8000:80"
+    volumes:
+      - ./local/nginx/static.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/dist-mock:/usr/share/nginx/html:ro

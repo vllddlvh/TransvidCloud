@@ -1,9 +1,10 @@
-import { useCallback } from 'react'
+import { lazy, Suspense, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useResource } from '../components/useResource'
 import { isVideoActive } from '../components/video'
-import { HlsPlayer } from '../player/HlsPlayer'
+
+const HlsPlayer = lazy(() => import('../player/HlsPlayer').then((module) => ({ default: module.HlsPlayer })))
 
 const UNAVAILABLE = 'Video is not available yet.'
 
@@ -19,7 +20,9 @@ export function Embed() {
     {loading
       ? <p className="embed-status" role="status">Loading video…</p>
       : video?.status === 'COMPLETED' && video.assets
-        ? <HlsPlayer assets={video.assets} />
+        ? <Suspense fallback={<p className="embed-status" role="status">Loading video…</p>}>
+          <HlsPlayer assets={video.assets} />
+        </Suspense>
         : <section className="embed-unavailable card" role="alert"><h1>{UNAVAILABLE}</h1></section>}
   </main>
 }

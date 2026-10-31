@@ -5,6 +5,7 @@ class TestXHR extends EventTarget {
   static last: TestXHR
   upload = new EventTarget()
   status = 0
+  responseText = ''
   timeout = 0
   open = vi.fn()
   setRequestHeader = vi.fn()
@@ -80,5 +81,31 @@ describe('presigned PUT transport', () => {
     controller.abort()
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
     expect(TestXHR.last.abort).toHaveBeenCalledOnce()
+  })
+  it('parses an S3 signature error without printing raw XML', async () => {
+    const pending = putFile(options)
+    const xhr = TestXHR.last
+    xhr.status = 403
+    xhr.responseText = '<?xml version="1.0"?><Error><Code>SignatureDoesNotMatch</Code><Message>bad signature</Message></Error>'
+    xhr.dispatchEvent(new Event('load'))
+    await expect(pending).rejects.toThrow('The upload link is not valid for this file. Retry to request a new link.')
+    await expect(pending).rejects.not.toThrow(/</)
+  })
+  it('maps an oversized S3 rejection to storage copy', async () => {
+    const pending = putFile(options)
+    const xhr = TestXHR.last
+    xhr.status = 400
+    xhr.responseText = '<Error><Code>EntityTooLarge</Code></Error>'
+    xhr.dispatchEvent(new Event('load'))
+    await expect(pending).rejects.toThrow('This file is larger than storage accepts.')
+  })
+  it('keeps an empty or HTML error response generic and safe', async () => {
+    const pending = putFile(options)
+    const xhr = TestXHR.last
+    xhr.status = 500
+    xhr.responseText = '<html><body>Internal error</body></html>'
+    xhr.dispatchEvent(new Event('load'))
+    await expect(pending).rejects.toThrow('The storage upload failed. Please try again.')
+    await expect(pending).rejects.not.toThrow(/html/i)
   })
 })

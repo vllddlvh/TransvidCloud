@@ -1,28 +1,22 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { startMockRuntime } from '@app/mock-runtime'
 import App from './App'
 import { putFile } from './api/transport'
+import { resolveApiMode } from './runtime/mode'
+import { unregisterMockWorkers } from './runtime/serviceWorker'
 import './styles.css'
 
 const root = createRoot(document.getElementById('root')!)
 
 async function start() {
-  const mode = import.meta.env.VITE_API_MODE ?? 'mock'
+  const mode = resolveApiMode(import.meta.env.VITE_API_MODE, import.meta.env.PROD)
   let uploadTransport = putFile
   if (mode === 'mock') {
-    const [{ startMocking }, { mockPutFile }] = await Promise.all([import('./mocks/browser'), import('./mocks/upload')])
-    await startMocking()
-    uploadTransport = mockPutFile
-  } else if (mode === 'real') {
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(registrations.filter((registration) =>
-        [registration.active, registration.waiting, registration.installing].some((worker) => worker && new URL(worker.scriptURL).pathname === '/mockServiceWorker.js')
-      ).map((registration) => registration.unregister()))
-    }
+    uploadTransport = await startMockRuntime()
   } else {
-    throw new Error('VITE_API_MODE must be mock or real.')
+    await unregisterMockWorkers('serviceWorker' in navigator ? navigator.serviceWorker : undefined)
   }
   root.render(<StrictMode><BrowserRouter><App uploadTransport={uploadTransport} /></BrowserRouter></StrictMode>)
 }

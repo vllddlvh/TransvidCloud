@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { auxiliaryOrigins, hasLocalAuxiliaryServers, primaryOrigin } from './support'
 
 async function signIn(page: Page, origin: string) {
   await page.goto(`${origin}/login`)
@@ -9,8 +10,9 @@ async function signIn(page: Page, origin: string) {
 }
 
 test('a failed PUT retries the same video and reaches PENDING', async ({ page }) => {
-  await signIn(page, 'http://localhost:5183')
-  await page.goto('http://localhost:5183/projects/demo-project/videos')
+  test.skip(!hasLocalAuxiliaryServers, 'Requires the local PUT-failure server')
+  await signIn(page, auxiliaryOrigins.putFailure)
+  await page.goto(`${auxiliaryOrigins.putFailure}/projects/demo-project/videos`)
   await page.getByRole('button', { name: 'Upload video' }).click()
   await page.getByLabel('Video file').setInputFiles({ name: 'retry.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(1024, 1) })
   await page.getByRole('button', { name: 'Start upload' }).click()
@@ -23,7 +25,8 @@ test('a failed PUT retries the same video and reaches PENDING', async ({ page })
 })
 
 test('real mode without a backend reports an error without falling back to mocks', async ({ page }) => {
-  await page.goto('http://localhost:5182/login')
+  test.skip(!hasLocalAuxiliaryServers, 'Requires the local real-mode server')
+  await page.goto(`${auxiliaryOrigins.real}/login`)
   await page.getByLabel('Email address').fill('demo@transvidcloud.test')
   await page.getByLabel('Password', { exact: true }).fill('DemoPass123!')
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
@@ -34,7 +37,7 @@ test('real mode without a backend reports an error without falling back to mocks
 })
 
 test('desktop navigation toggles and releases content space', async ({ page }) => {
-  await signIn(page, 'http://localhost:5181')
+  await signIn(page, primaryOrigin)
   const toggle = page.getByRole('button', { name: 'Toggle navigation' })
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
   await toggle.click()
@@ -45,7 +48,7 @@ test('desktop navigation toggles and releases content space', async ({ page }) =
 })
 
 test('reload of an expired session explains why sign-in is needed', async ({ page }) => {
-  await signIn(page, 'http://localhost:5181')
+  await signIn(page, primaryOrigin)
   await page.evaluate(() => {
     const session = JSON.parse(localStorage.getItem('tvc.session')!)
     session.expiresAt = new Date(Date.now() - 1000).toISOString()

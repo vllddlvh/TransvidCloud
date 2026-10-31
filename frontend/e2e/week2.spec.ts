@@ -1,9 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
+import { auxiliaryOrigins, hasLocalAuxiliaryServers, primaryOrigin } from './support'
 
-const ORIGIN = 'http://localhost:5181'
-const FAIL_ORIGIN = 'http://localhost:5184'
-
-async function login(page: Page, origin = ORIGIN) {
+async function login(page: Page, origin = primaryOrigin) {
   await page.goto(`${origin}/projects`)
   await expect(page).toHaveURL(/\/login$/)
   await page.getByLabel('Email address').fill('demo@transvidcloud.test')
@@ -29,12 +27,13 @@ test.describe('clipboard actions', () => {
     await expect(page.locator('[data-manifest-state="parsed"]')).toBeVisible({ timeout: 15000 })
     await page.getByRole('button', { name: 'Copy streaming link' }).click()
     await expect(page.getByRole('status')).toContainText('Streaming link copied.')
+    const origin = await page.evaluate(() => location.origin)
     expect(await page.evaluate(() => navigator.clipboard.readText()))
-      .toBe(`${ORIGIN}/media/demo-project/demo-completed/hls/master.m3u8`)
+      .toBe(`${origin}/media/demo-project/demo-completed/hls/master.m3u8`)
     await page.getByRole('button', { name: 'Copy embed code' }).click()
     await expect(page.getByRole('status')).toContainText('Embed code copied.')
     expect(await page.evaluate(() => navigator.clipboard.readText()))
-      .toBe(`<iframe src="${ORIGIN}/embed?video=demo-completed" width="640" height="360" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen frameborder="0"></iframe>`)
+      .toBe(`<iframe src="${origin}/embed?video=demo-completed" width="640" height="360" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen frameborder="0"></iframe>`)
   })
 })
 
@@ -68,8 +67,9 @@ test('embed shows a compact unavailable state for missing or incomplete videos',
 })
 
 test('fail mode surfaces TRANSCODE_FAILED with automatic-retry guidance', async ({ page }) => {
-  await login(page, FAIL_ORIGIN)
-  await page.goto(`${FAIL_ORIGIN}/projects/demo-project/videos`)
+  test.skip(!hasLocalAuxiliaryServers, 'Requires the local transcode-failure server')
+  await login(page, auxiliaryOrigins.processFailure)
+  await page.goto(`${auxiliaryOrigins.processFailure}/projects/demo-project/videos`)
   const row = await upload(page, 'week2-failure.mp4')
   await expect(row.getByText('Transcode failed', { exact: true })).toBeVisible({ timeout: 35000 })
   await row.click()

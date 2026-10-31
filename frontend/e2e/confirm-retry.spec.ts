@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
+import { auxiliaryOrigins, hasLocalAuxiliaryServers } from './support'
 
 test('failed confirmation retries only confirm, without duplicating the video or PUT', async ({ page }) => {
+  test.skip(!hasLocalAuxiliaryServers, 'Requires the local real-mode server')
   const now = new Date().toISOString()
   const project = { projectId: 'retry-project', name: 'Confirm retry', description: '', videoCount: 0, createdAt: now }
   const video = { videoId: 'retry-video', projectId: project.projectId, filename: 'confirm.mp4', contentType: 'video/mp4', sizeBytes: 5, status: 'UPLOADING', createdAt: now, updatedAt: now }
@@ -30,7 +32,7 @@ test('failed confirmation retries only confirm, without duplicating the video or
     authorization.push(route.request().headers().authorization)
     await route.fulfill({ status: 200, body: '' })
   })
-  await page.goto('http://localhost:5182/login')
+  await page.goto(`${auxiliaryOrigins.real}/login`)
   await page.getByLabel('Email address').fill('test@example.test')
   await page.getByLabel('Password', { exact: true }).fill('test-password')
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()

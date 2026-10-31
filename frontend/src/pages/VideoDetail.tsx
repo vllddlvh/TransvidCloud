@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { lazy, Suspense, useCallback } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CircleAlert, FileVideo } from 'lucide-react'
 import { api } from '../api/client'
@@ -7,7 +7,8 @@ import { ErrorCard, useNotice } from '../components/Notice'
 import { copyText } from '../components/clipboard'
 import { VideoStatus, formatBytes, formatDate } from '../components/VideoStatus'
 import { failureGuidance, isVideoActive } from '../components/video'
-import { HlsPlayer } from '../player/HlsPlayer'
+
+const HlsPlayer = lazy(() => import('../player/HlsPlayer').then((module) => ({ default: module.HlsPlayer })))
 
 export function VideoDetail() {
   const { id = '' } = useParams()
@@ -47,7 +48,9 @@ export function VideoDetail() {
         : video.status === 'COMPLETED'
           ? video.assets
             ? <div className="player-column">
-              <HlsPlayer assets={video.assets} autoplay />
+              <Suspense fallback={<p className="player-placeholder card" role="status">Loading player…</p>}>
+                <HlsPlayer assets={video.assets} autoplay />
+              </Suspense>
               <section className="card video-actions">
                 <h2>Share</h2>
                 <p className="muted">Copy the streaming link or embed this video anywhere.</p>

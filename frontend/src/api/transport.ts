@@ -13,6 +13,21 @@ export class UploadError extends Error {
   }
 }
 
+function storageError(xhr: XMLHttpRequest): UploadError {
+  const body = typeof xhr.responseText === 'string' ? xhr.responseText : ''
+  const code = /<Code>([^<]+)<\/Code>/.exec(body)?.[1]?.trim()
+  if (xhr.status === 403) {
+    if (code === 'SignatureDoesNotMatch' || code === 'InvalidAccessKeyId') {
+      return new UploadError('The upload link is not valid for this file. Retry to request a new link.', xhr.status)
+    }
+    return new UploadError('The upload link expired or was rejected. Retry to request a new link.', xhr.status)
+  }
+  if (code === 'EntityTooLarge') {
+    return new UploadError('This file is larger than storage accepts.', xhr.status)
+  }
+  return new UploadError('The storage upload failed. Please try again.', xhr.status)
+}
+
 export function putFile({ url, headers, file, signal, onProgress }: UploadRequest): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -46,9 +61,7 @@ export function putFile({ url, headers, file, signal, onProgress }: UploadReques
         onProgress?.(100)
         resolve()
       } else {
-        fail(new UploadError(xhr.status === 403
-          ? 'The upload link expired or was rejected. Retry to request a new link.'
-          : 'The storage upload failed. Please try again.', xhr.status))
+        fail(storageError(xhr))
       }
     })
     xhr.addEventListener('error', () => fail(new UploadError('Upload interrupted. Check your connection and try again.')))

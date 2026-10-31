@@ -88,6 +88,16 @@ F4 và F5 đều cần "phía thật" mà tuần này chưa có: worker ghi tr�
 - [x] Thao tác tay desktop 1440px + mobile 390px: upload → tự `COMPLETED` → phát + copy link/embed; console **0 lỗi**; không tràn ngang ở list/detail/embed; poster hiện đúng; player `readyState=4`, duration 10,4 giây. Tab ẩn 7 giây: **0 request poll**; hiện lại: poll ngay rồi cách nhau ~3.007–3.012 ms (lần tải đầu trong dev có thêm request trùng do StrictMode).
 - [ ] **Chưa kiểm chứng — dời tuần 9 (bổ sung từ Week1):** hls.js với output FFmpeg thật (segment thật, duration/bitrate thật), `/media/*` qua nginx `localhost:8000` (stack `full`) rồi CloudFront thật (C4/Lưu), auth cho embed (đang gap contract — xem [`docs/contracts/frontend-week2-gaps.md`](../../contracts/frontend-week2-gaps.md)), errorCode thật từ worker (A4) cho branch `FAILED_*`, hành vi autoplay thật của browser với `/embed`, và clipboard trên LAN IP không HTTPS.
 
+**Cập nhật Week 3 (2026-10-31) — xử lý từng mục:**
+
+- hls.js với output FFmpeg thật: **đã kiểm chứng local** — worker LocalStack sinh 360p/720p, hls.js 1.7.4 parse master qua nginx `:8000` (real-media e2e 1 pass); bitrate/keyframe/fMP4 chưa đo.
+- `/media/*` qua nginx `localhost:8000`: **đã kiểm chứng local** (static + dev proxy); CloudFront thật **còn mở** — chờ Lưu/Nguyên chốt cache `.m3u8`/OAC.
+- Auth cho embed: **còn mở** — chưa có contract công khai, frontend giữ mock/demo-only (gap #1).
+- errorCode thật từ worker: **đã đối chiếu mã worker** (4 mã validation khớp); envelope API và retry tự động **còn mở** — chờ Phương (gap #4).
+- Autoplay thật của browser với `/embed`: **còn mở** — e2e Chromium vẫn không autoplay theo thiết kế; chưa kiểm Safari/CloudFront.
+- Clipboard trên LAN IP không HTTPS: **còn mở** — e2e chỉ chạy localhost (secure context).
+- Chi tiết: [Week3.md](Week3.md) mục Kết quả và [`frontend-week2-gaps.md`](../../contracts/frontend-week2-gaps.md).
+
 ## Việc chuyển tiếp / cộng thêm nếu sớm (không mở P1)
 
 - Thumbnail thật trong danh sách (hi fixture chưa có ảnh — chờ worker; mock có thể sinh JPEG per-video nếu rảnh)

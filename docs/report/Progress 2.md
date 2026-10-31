@@ -339,4 +339,17 @@ Phân tải theo người (capacity mỗi người ~10 pd = 2,5 ngày × 4 tuầ
 
 Quy ước mốc theo sprint: **cuối sprint 2** phải có pipeline end-to-end chạy trên AWS (tương đương M2); **cuối sprint 3** có SaaS + API + HLS qua CloudFront và worker tự scale 1→2 (M3); **cuối sprint 4** có số liệu benchmark/chaos, báo cáo đầy đủ, 2 lần diễn tập, đóng băng (M4); tuần dự phòng chỉ sửa lỗi chặn nộp. Nếu tài nguyên AWS trễ hạn quota hoặc Tunnel không ổn định, dùng cổng thoát: tạo tay tài nguyên có ghi runbook, Terraform chỉ giữ 4 module dữ liệu.
 
+## 3.4. Hiện trạng Worker (31/10/2026)
+
+Phần Worker đã hoàn tất phần **local-first**; các mốc phụ thuộc AWS vẫn chờ môi trường của nhóm Cloud.
+
+- **Pipeline thực tế:** SQS long-poll → tải input từ S3 → ffprobe validate (200 MB / 300 giây / 1080p) → FFmpeg một lần giải mã, `split` ra HLS 360p/720p + thumbnail JPEG → PUT output với Content-Type/Cache-Control → DynamoDB `COMPLETED` có điều kiện → ACK.
+- **Độ tin cậy:** heartbeat gia hạn visibility 120s/300s; SIGTERM trả message về queue (visibility 30s) và thoát 0; lỗi hệ thống giữ message để retry, DLQ sau 3 lần nhận; idempotency bỏ qua video đã `COMPLETED`; **không exactly-once** — hai worker cùng job có thể transcode trùng, worker ghi `COMPLETED` đầu tiên thắng, worker sau ACK message trùng (`COMPLETED_BY_OTHER`). Đây là giới hạn đã đo, chờ chốt contract ownership.
+- **Bằng chứng local (image `sha256:613656ca…`, FFmpeg 5.1.9, source `b5cf8ea`):**
+  - `make e2e-worker` PASS: `COMPLETED`, `attemptCount=1`, assets và header đúng, 360p/720p decode đủ segment/frame, thumbnail JPEG, playback `/media/*`, worker exit 0.
+  - `make chaos` PASS trong container: SIGTERM, SIGKILL, DLQ (`receiveCount=4`, worker nhận 3), hai worker cùng job.
+  - `make bench` (12 job × 2 lượt, video 10s 720p): 1 worker 0,31 job/s, p95 duration 4.437 ms; 2 worker 0,33 job/s, p95 duration 6.978 ms. Hai worker chỉ tăng ~6,5% throughput vì chia sẻ CPU một host — số liệu này **không** dùng cho autoscaling AWS.
+  - Log JSON có `jobId/videoId/projectId/attempt/queueWaitMs/durationMs/ffmpegMs/bytesIn/bytesOut/errorCode`; **worker chưa phát metric CloudWatch**, C5 lấy số liệu từ log theo bảng bàn giao ở [docs-worker/5. Contact docs](../docs-worker/5.%20Contact%20docs.md) mục 5.6.
+- **Chưa đạt:** A4 (backend login/confirm chưa có), M2/M3/M4 (chưa có AWS: pipeline thật, scale 1→2→1 + scale-in protection, benchmark on-demand, chaos AWS, hai diễn tập, đóng băng). Không có số liệu AWS nào được ghi thay thế.
+
 > Các mục tiếp theo của báo cáo (kết quả triển khai hạ tầng, thực nghiệm scaling/recovery, số liệu benchmark) sẽ được viết bổ sung sau khi các dòng 9–12 của bảng 3.2 hoàn thành.

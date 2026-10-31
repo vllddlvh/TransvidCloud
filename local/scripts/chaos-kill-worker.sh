@@ -11,6 +11,8 @@
 # Biến tùy chỉnh:
 #   TVC_CHAOS_VISIBILITY=10s  TVC_CHAOS_HEARTBEAT=3s
 #   TVC_CHAOS_FFMPEG_DELAY=20 # giây làm chậm có kiểm soát trước khi chạy ffmpeg thật
+#   TVC_CHAOS_RUNTIME=host|docker # docker: worker chạy trong image worker/Dockerfile
+#   TVC_CHAOS_SCENARIOS=sigterm,sigkill,dlq,competing
 #   KEEP_CHAOS_RESOURCES=1    # giữ queue/object/item để xem lại
 #
 # Exit != 0 khi timeout hoặc assertion sai.
@@ -38,6 +40,14 @@ DLQ_ARN=""
 VISIBILITY="${TVC_CHAOS_VISIBILITY:-10s}"
 HEARTBEAT="${TVC_CHAOS_HEARTBEAT:-3s}"
 FFMPEG_DELAY="${TVC_CHAOS_FFMPEG_DELAY:-20}"
+RUNTIME="${TVC_CHAOS_RUNTIME:-host}"
+WORKER_IMAGE="${TVC_CHAOS_IMAGE:-tvc-worker:chaos}"
+CHAOS_IMAGE="${WORKER_IMAGE}-delay"
+LOCALSTACK_CONTAINER="${TVC_LOCALSTACK_CONTAINER:-tvc-localstack}"
+DOCKER_HOST_INTERNAL="host.docker.internal"
+SCENARIOS="${TVC_CHAOS_SCENARIOS:-sigterm,sigkill,dlq,competing}"
+VOLUMES=()
+TAIL_PIDS=()
 PROJECT="prj-chaos-$RUN_ID"
 SAMPLE="$ROOT/worker/testdata/sample-10s-720p.mp4"
 WORKER_BIN="$RUN_DIR/worker"
@@ -59,12 +69,29 @@ fail() {
 }
 
 aws_() {
-  (cd "$ROOT" && docker compose exec -T localstack awslocal "$@")
+  if docker inspect "$LOCALSTACK_CONTAINER" >/dev/null 2>&1; then
+    docker exec -i "$LOCALSTACK_CONTAINER" awslocal "$@"
+  else
+    (cd "$ROOT" && docker compose exec -T localstack awslocal "$@")
+  fi
 }
 
-wait_exit() { # wait_exit <pid> <timeout_s>
-  local pid="$1" timeout="$2" start=$SECONDS
-  while kill -0 "$pid" 2>/dev/null; do
+# Worker được định danh bằng "<pid>" (host) hoặc "docker:<container>" để cùng
+# một kịch bản chạy được cả hai runtime.
+worker_alive() {
+  case "$1" in
+    docker:*)
+      [ "$(docker inspect -f '{{.State.Running}}' "${1#docker:}" 2>/dev/null || echo false)" = "true" ]
+      ;;
+    *)
+      kill -0 "$1" 2>/dev/null
+      ;;
+  esac
+}
+
+worker_wait() { # worker_wait <ref> <timeout_s>
+  local ref="$1" timeout="$2" start=$SECONDS
+  while worker_alive "$ref"; do
     if [ $((SECONDS - start)) -ge "$timeout" ]; then
       return 1
     fi
@@ -73,30 +100,88 @@ wait_exit() { # wait_exit <pid> <timeout_s>
   return 0
 }
 
-reap_worker() { # reap_worker <name> <pid> <expect_code>
-  local name="$1" pid="$2" expect="$3" code=0
-  if ! wait_exit "$pid" 60; then
-    kill -KILL "$pid" 2>/dev/null || true
+worker_exit_code() {
+  case "$1" in
+    docker:*)
+      docker wait "${1#docker:}"
+      ;;
+    *)
+      local code=0
+      if wait "$1" 2>/dev/null; then code=0; else code=$?; fi
+      printf '%s\n' "$code"
+      ;;
+  esac
+}
+
+worker_signal() { # worker_signal <ref> <TERM|KILL>
+  local ref="$1" sig="$2"
+  worker_alive "$ref" || return 0
+  case "$ref" in
+    docker:*)
+      docker kill --signal="$sig" "${ref#docker:}" >/dev/null
+      ;;
+    *)
+      kill -"$sig" "$ref"
+      ;;
+  esac
+}
+
+reap_worker() { # reap_worker <name> <ref> <expect_code>
+  local name="$1" ref="$2" expect="$3" code=0
+  if ! worker_wait "$ref" 60; then
+    worker_signal "$ref" KILL
     fail "worker $name không thoát trong 60s"
   fi
-  if wait "$pid" 2>/dev/null; then code=0; else code=$?; fi
+  code="$(worker_exit_code "$ref")"
   printf '%s\n' "$code" > "$RUN_DIR/worker-$name.exit"
   record "worker $name exit=$code (mong $expect)"
   [ "$code" -eq "$expect" ] || fail "worker $name exit $code (mong $expect)"
 }
 
-stop_worker() { # stop_worker <name> <pid> [expect_code]
-  local name="$1" pid="$2" expect="${3:-0}"
-  if kill -0 "$pid" 2>/dev/null; then
-    kill -TERM "$pid"
-  fi
-  reap_worker "$name" "$pid" "$expect"
+stop_worker() { # stop_worker <name> <ref> [expect_code]
+  local name="$1" ref="$2" expect="${3:-0}"
+  worker_signal "$ref" TERM
+  reap_worker "$name" "$ref" "$expect"
 }
 
 start_worker() { # start_worker <name> <visibility> <heartbeat> <ffmpeg_delay> <tmp_dir>
   local name="$1" visibility="$2" heartbeat="$3" delay="$4" tmp="$5"
-  local log="$RUN_DIR/worker-$name.log"
+  local log="$RUN_DIR/worker-$name.log" wq
   : > "$log"
+  wq="${QUEUE_URL/localhost/$DOCKER_HOST_INTERNAL}"
+  if [ "$RUNTIME" = "docker" ]; then
+    local cname="tvc-chaos-$name-$RUN_ID"
+    local vol
+    vol="$(volume_for "$tmp")"
+    docker volume create "$vol" >/dev/null
+    VOLUMES+=("$vol")
+    docker run -d --name "$cname" --init \
+      --add-host="$DOCKER_HOST_INTERNAL:host-gateway" \
+      -e AWS_REGION="$REGION" \
+      -e AWS_ENDPOINT_URL="http://$DOCKER_HOST_INTERNAL:4566" \
+      -e AWS_ACCESS_KEY_ID=test \
+      -e AWS_SECRET_ACCESS_KEY=test \
+      -e TVC_INPUT_BUCKET="$INPUT_BUCKET" \
+      -e TVC_OUTPUT_BUCKET="$OUTPUT_BUCKET" \
+      -e TVC_JOBS_QUEUE_URL="$wq" \
+      -e TVC_DDB_VIDEOS="$VIDEOS_TABLE" \
+      -e TVC_TMP_DIR=/tmp/tvc \
+      -e TVC_HEARTBEAT_INTERVAL="$heartbeat" \
+      -e TVC_VISIBILITY_TIMEOUT="$visibility" \
+      -e TVC_FFMPEG_TIMEOUT=2m \
+      -e TVC_CHAOS_FFMPEG_DELAY="$delay" \
+      -e TVC_CHAOS_REAL_FFMPEG=/usr/bin/ffmpeg \
+      -v "$vol:/tmp/tvc" \
+      "$CHAOS_IMAGE" >/dev/null
+    docker logs -f "$cname" >>"$log" 2>&1 &
+    TAIL_PIDS+=("$!")
+    printf '%s\n' "docker:$cname" > "$RUN_DIR/worker-$name.pid"
+    WORKER_PID="docker:$cname"
+    WORKER_LOG="$log"
+    WORKER_TMP="$tmp"
+    record "worker $name container=$cname volume=$vol visibility=$visibility heartbeat=$heartbeat ffmpegDelay=${delay}s log=$(basename "$log")"
+    return
+  fi
   (
     cd "$ROOT/worker"
     exec env \
@@ -160,6 +245,11 @@ get_status() {
 get_error_code() {
   aws_ dynamodb get-item --table-name "$VIDEOS_TABLE" \
     --key "{\"videoId\":{\"S\":\"$1\"}}" --query 'Item.errorCode.S' --output text
+}
+
+get_attempt_count() {
+  aws_ dynamodb get-item --table-name "$VIDEOS_TABLE" \
+    --key "{\"videoId\":{\"S\":\"$1\"}}" --query 'Item.attemptCount.N' --output text
 }
 
 wait_status() { # wait_status <videoId> <status> <timeout_s>
@@ -241,44 +331,104 @@ assert_assets() { # assert_assets <projectId> <videoId>
   record "assets DynamoDB đủ hls/hls360/hls720/thumbnail"
 }
 
+volume_for() { # volume_for <tmp_dir>
+  printf 'tvc-chaos-%s-%s\n' "$RUN_ID" "$(basename "$1")"
+}
+
+tmp_dir_exists() { # tmp_dir_exists <tmp_dir> <jobId>
+  if [ "$RUNTIME" = "docker" ]; then
+    docker run --rm -v "$(volume_for "$1"):/tmp/tvc" --entrypoint sh "$CHAOS_IMAGE" \
+      -c "test -d /tmp/tvc/$2"
+  else
+    [ -d "$1/$2" ]
+  fi
+}
+
 assert_temp_clean() { # assert_temp_clean <tmp_dir>
   local leftover
-  leftover="$(find "$1" -mindepth 1 -maxdepth 1 ! -name '.tvc-worker-tmp' -print -quit 2>/dev/null || true)"
+  if [ "$RUNTIME" = "docker" ]; then
+    leftover="$(docker run --rm -v "$(volume_for "$1"):/tmp/tvc" --entrypoint sh "$CHAOS_IMAGE" -c \
+      'find /tmp/tvc -mindepth 1 -maxdepth 1 ! -name .tvc-worker-tmp -print -quit' 2>/dev/null || true)"
+  else
+    leftover="$(find "$1" -mindepth 1 -maxdepth 1 ! -name '.tvc-worker-tmp' -print -quit 2>/dev/null || true)"
+  fi
   [ -z "$leftover" ] || fail "thư mục tạm còn sót: $leftover"
   record "temp sạch: $1"
+}
+
+s3_cat() { # s3_cat <key>
+  aws_ s3 cp "s3://$OUTPUT_BUCKET/$1" - --only-show-errors
+}
+
+# Tải playlist + segment đầu tiên của từng rendition về host và giải mã bằng
+# ffprobe; chỉ kiểm "object tồn tại" chưa đủ chứng minh output phát được.
+assert_playable() { # assert_playable <projectId> <videoId> <label>
+  local prefix="$1/$2" dir="$RUN_DIR/playback-$3" master seg out height frames rendition
+  mkdir -p "$dir"
+  master="$(s3_cat "$prefix/hls/master.m3u8")"
+  grep -Fq '360p/index.m3u8' <<<"$master" || fail "master thiếu 360p"
+  grep -Fq '720p/index.m3u8' <<<"$master" || fail "master thiếu 720p"
+  for rendition in 360p 720p; do
+    mkdir -p "$dir/$rendition"
+    s3_cat "$prefix/hls/$rendition/index.m3u8" > "$dir/$rendition/index.m3u8"
+    seg="$(grep -E '\.ts$' "$dir/$rendition/index.m3u8" | head -n 1 || true)"
+    [ -n "$seg" ] || fail "$rendition playlist không tham chiếu segment .ts"
+    s3_cat "$prefix/hls/$rendition/$seg" > "$dir/$rendition/$seg"
+    out="$(ffprobe -v error -allowed_extensions ALL -select_streams v:0 -count_frames \
+      -show_entries stream=height,nb_read_frames -of csv=p=0 \
+      "$dir/$rendition/index.m3u8" 2>/dev/null | head -n 1 | tr -d '\r')"
+    height="${out%%,*}"
+    frames="${out##*,}"
+    [ "$height" = "${rendition%p}" ] || fail "ffprobe $rendition height=$height (mong ${rendition%p})"
+    [ -n "$frames" ] && [ "$frames" -gt 0 ] || fail "ffprobe không giải mã được frame nào ở $rendition"
+    record "playback $rendition: ffprobe height=$height frames=$frames segment=$seg"
+  done
 }
 
 cleanup() {
   local code=$?
   set +e
-  local pidfile pid
-  for pidfile in "$RUN_DIR"/*.pid; do
-    [ -e "$pidfile" ] || continue
-    pid="$(cat "$pidfile" 2>/dev/null || true)"
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-      kill -TERM "$pid" 2>/dev/null
-      wait_exit "$pid" 20 || kill -KILL "$pid" 2>/dev/null
+  local f ref deadline i v
+  for f in "$RUN_DIR"/*.pid; do
+    [ -e "$f" ] || continue
+    ref="$(cat "$f" 2>/dev/null || true)"
+    [ -n "$ref" ] || continue
+    if worker_alive "$ref"; then
+      worker_signal "$ref" TERM
+      deadline=$((SECONDS + 20))
+      while worker_alive "$ref" && [ "$SECONDS" -lt "$deadline" ]; do
+        sleep 0.2
+      done
+      worker_alive "$ref" && worker_signal "$ref" KILL
     fi
+    case "$ref" in
+      docker:*) docker rm -f "${ref#docker:}" >/dev/null 2>&1 ;;
+    esac
   done
+
+  # dừng docker logs -f trước khi đọc log chẩn đoán
+  if [ "${#TAIL_PIDS[@]}" -gt 0 ]; then
+    for i in "${TAIL_PIDS[@]}"; do kill "$i" 2>/dev/null; done
+  fi
 
   if [ "$code" -ne 0 ]; then
     {
       echo "--- chẩn đoán: 20 dòng cuối mỗi worker log ---"
-      local f
-      for f in "$RUN_DIR"/worker-*.log; do
-        [ -f "$f" ] || continue
-        echo "### $f"
-        tail -n 20 "$f"
+      local log
+      for log in "$RUN_DIR"/worker-*.log; do
+        [ -f "$log" ] || continue
+        echo "### $log"
+        tail -n 20 "$log"
       done
     } >> "$SUMMARY"
   fi
 
   if [ "${KEEP_CHAOS_RESOURCES:-0}" != "1" ]; then
-    local v
-    while read -r v; do
-      [ -n "$v" ] || continue
+    local video
+    while read -r video; do
+      [ -n "$video" ] || continue
       aws_ dynamodb delete-item --table-name "$VIDEOS_TABLE" \
-        --key "{\"videoId\":{\"S\":\"$v\"}}" >/dev/null 2>&1
+        --key "{\"videoId\":{\"S\":\"$video\"}}" >/dev/null 2>&1 </dev/null
     done < "$RUN_DIR/videos.txt"
     aws_ s3 rm "s3://$INPUT_BUCKET/$PROJECT/" --recursive >/dev/null 2>&1
     aws_ s3 rm "s3://$OUTPUT_BUCKET/$PROJECT/" --recursive >/dev/null 2>&1
@@ -286,14 +436,19 @@ cleanup() {
     if [ -f "$RUN_DIR/queues.txt" ]; then
       while read -r q d; do
         [ -n "$q" ] || continue
-        aws_ sqs delete-queue --queue-url "$q" >/dev/null 2>&1
+        aws_ sqs delete-queue --queue-url "$q" >/dev/null 2>&1 </dev/null
         [ -n "$d" ] || continue
-        aws_ sqs delete-queue --queue-url "$d" >/dev/null 2>&1
+        aws_ sqs delete-queue --queue-url "$d" >/dev/null 2>&1 </dev/null
       done < "$RUN_DIR/queues.txt"
     fi
-    record "cleanup: đã xóa queue/object/item của lần chạy"
+    if [ "${#VOLUMES[@]}" -gt 0 ]; then
+      for v in "${VOLUMES[@]}"; do
+        docker volume rm "$v" >/dev/null 2>&1
+      done
+    fi
+    record "cleanup: đã xóa queue/object/item/volume của lần chạy"
   else
-    record "cleanup: giữ tài nguyên vì KEEP_CHAOS_RESOURCES=1"
+    record "cleanup: giữ tài nguyên vì KEEP_CHAOS_RESOURCES=1 (volume: ${VOLUMES[*]:-})"
   fi
 
   rm -f "$WORKER_BIN"
@@ -309,39 +464,62 @@ trap cleanup EXIT
 {
   echo "# Chaos worker — $STAMP"
   echo "runId=$RUN_ID"
+  echo "runtime=$RUNTIME"
+  echo "scenarios=$SCENARIOS"
   echo "git=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   if [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null || true)" ]; then
     echo "gitDirty=yes"
   else
     echo "gitDirty=no"
   fi
-  echo "go=$(go version 2>/dev/null || echo missing)"
-  echo "ffmpeg=$(ffmpeg -version 2>/dev/null | head -n 1 || echo missing)"
-  echo "localstack=$(cd "$ROOT" && docker compose config --images 2>/dev/null | grep localstack | head -n 1 || echo unknown)"
+  if [ "$RUNTIME" = "host" ]; then
+    echo "go=$(go version 2>/dev/null || echo missing)"
+    echo "ffmpeg=$(ffmpeg -version 2>/dev/null | head -n 1 || echo missing)"
+  else
+    echo "workerImage=$WORKER_IMAGE chaosImage=$CHAOS_IMAGE"
+  fi
+  echo "localstackContainer=$LOCALSTACK_CONTAINER image=$(docker inspect -f '{{.Config.Image}}' "$LOCALSTACK_CONTAINER" 2>/dev/null || echo unknown)"
   echo "queue: mỗi ca một queue + DLQ riêng, maxReceiveCount=3"
-  echo "sigterm/sigkill: visibility=$VISIBILITY heartbeat=$HEARTBEAT heartbeatDelay=${FFMPEG_DELAY}s"
+  echo "sigterm/sigkill: visibility=$VISIBILITY heartbeat=$HEARTBEAT ffmpegDelay=${FFMPEG_DELAY}s"
   echo "dlq: visibility=2s heartbeat=1s"
+  echo "competing: 2 worker, 2 message cùng jobId, ffmpegDelay=${FFMPEG_DELAY}s"
 } > "$SUMMARY"
 
-for bin in go ffmpeg ffprobe docker; do
+case "$RUNTIME" in
+  host|docker) ;;
+  *) fail "TVC_CHAOS_RUNTIME=$RUNTIME (mong host|docker)" ;;
+esac
+
+for bin in docker ffprobe; do
   command -v "$bin" >/dev/null 2>&1 || fail "thiếu $bin trong PATH"
 done
+if [ "$RUNTIME" = "host" ]; then
+  for bin in go ffmpeg; do
+    command -v "$bin" >/dev/null 2>&1 || fail "thiếu $bin trong PATH"
+  done
+fi
 [ -f "$SAMPLE" ] || fail "thiếu video mẫu $SAMPLE"
-REAL_FFMPEG="$(command -v ffmpeg)"
+REAL_FFMPEG="/usr/bin/ffmpeg"
+if [ "$RUNTIME" = "host" ]; then
+  REAL_FFMPEG="$(command -v ffmpeg)"
+fi
 
 # ffmpeg wrapper: làm chậm có kiểm soát riêng lệnh HLS (có -filter_complex),
-# không đổi lệnh/encoding thật. Nếu worker cha chết (SIGKILL) thì thoát, tránh
-# ffmpeg mồ côi chạy tiếp trong thư mục đã bị dọn.
+# không đổi lệnh/encoding thật. POSIX sh để chạy được trong image Debian
+# bookworm-slim (không có bash); guard PPID chỉ có tác dụng ở host, còn trong
+# container thì kernel dọn mọi process khi container chết.
 cat > "$CHAOS_BIN/ffmpeg" <<'WRAPPER'
-#!/usr/bin/env bash
+#!/bin/sh
 set -eu
 delay="${TVC_CHAOS_FFMPEG_DELAY:-0}"
 real="${TVC_CHAOS_REAL_FFMPEG:?thiếu TVC_CHAOS_REAL_FFMPEG}"
 for arg in "$@"; do
   if [ "$arg" = "-filter_complex" ] && [ "$delay" -gt 0 ]; then
-    end=$((SECONDS + delay))
-    while [ "$SECONDS" -lt "$end" ]; do
-      kill -0 "$PPID" 2>/dev/null || exit 130
+    end=$(( $(date +%s) + delay ))
+    while [ "$(date +%s)" -lt "$end" ]; do
+      if [ -n "${PPID:-}" ] && ! kill -0 "$PPID" 2>/dev/null; then
+        exit 130
+      fi
       sleep 1
     done
     break
@@ -351,8 +529,37 @@ exec "$real" "$@"
 WRAPPER
 chmod +x "$CHAOS_BIN/ffmpeg"
 
-record "==> build worker"
-(cd "$ROOT/worker" && go build -o "$WORKER_BIN" ./cmd/worker)
+WORKER_IMAGE_ID=""
+CHAOS_IMAGE_ID=""
+build_runtime() {
+  if [ "$RUNTIME" = "docker" ]; then
+    record "==> build image $WORKER_IMAGE từ worker/Dockerfile"
+    docker build -q -t "$WORKER_IMAGE" "$ROOT/worker" >/dev/null
+    WORKER_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$WORKER_IMAGE")"
+    record "image $WORKER_IMAGE id=$WORKER_IMAGE_ID"
+    record "image ffmpeg: $(docker run --rm --entrypoint ffmpeg "$WORKER_IMAGE" -version | head -n 1)"
+
+    local ctx="$RUN_DIR/chaos-image"
+    mkdir -p "$ctx"
+    cp "$CHAOS_BIN/ffmpeg" "$ctx/ffmpeg"
+    cat > "$ctx/Dockerfile" <<EOF
+FROM $WORKER_IMAGE
+USER root
+COPY ffmpeg /usr/local/bin/ffmpeg
+RUN chmod 0755 /usr/local/bin/ffmpeg
+USER worker
+EOF
+    docker build -q -t "$CHAOS_IMAGE" "$ctx" >/dev/null
+    CHAOS_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$CHAOS_IMAGE")"
+    record "image $CHAOS_IMAGE (ffmpeg delay wrapper) id=$CHAOS_IMAGE_ID"
+  else
+    record "==> build worker binary"
+    (cd "$ROOT/worker" && go build -o "$WORKER_BIN" ./cmd/worker)
+    record "worker binary=$WORKER_BIN"
+  fi
+}
+
+build_runtime
 
 record "==> kiểm tra LocalStack"
 aws_ sqs list-queues >/dev/null 2>&1 \
@@ -381,7 +588,7 @@ JSON
 }
 
 scenario_sigterm() {
-  echo "==> Ca 1/3: SIGTERM giữa transcode"
+  echo "==> Ca SIGTERM giữa transcode"
   setup_queue sigterm
   JOB="job-sigterm-$RUN_ID"
   VIDEO="vid-sigterm-$RUN_ID"
@@ -427,13 +634,14 @@ scenario_sigterm() {
   wait_for_job_line "$log2" "$JOB" job_finished 180
   wait_status "$VIDEO" "COMPLETED" 60
   assert_assets "$PROJECT" "$VIDEO"
+  assert_playable "$PROJECT" "$VIDEO" sigterm
   assert_temp_clean "$TMP"
   stop_worker sigterm-redelivery "$pid2" 0
   record "sigterm: PASS"
 }
 
 scenario_sigkill() {
-  echo "==> Ca 2/3: SIGKILL giữa transcode"
+  echo "==> Ca SIGKILL giữa transcode"
   setup_queue sigkill
   JOB="job-sigkill-$RUN_ID"
   VIDEO="vid-sigkill-$RUN_ID"
@@ -449,9 +657,9 @@ scenario_sigkill() {
   wait_for_job_line "$log" "$JOB" transcode_started 120
   sleep 4 # để có ít nhất một lần heartbeat trước khi kill
   record "sigkill: kill -9 lúc $(date -u +%H:%M:%SZ)"
-  kill -KILL "$pid"
+  worker_signal "$pid" KILL
   reap_worker sigkill "$pid" 137
-  [ -d "$TMP/$JOB" ] || fail "mong thư mục tạm mồ côi $TMP/$JOB sau SIGKILL"
+  tmp_dir_exists "$TMP" "$JOB" || fail "mong thư mục tạm mồ côi $TMP/$JOB sau SIGKILL"
   if job_line "$log" "$JOB" message_released >/dev/null 2>&1 \
     || grep -Fq '"msg":"message_released"' "$log"; then
     fail "SIGKILL không thể release message"
@@ -462,7 +670,9 @@ scenario_sigkill() {
   start_worker sigkill-redelivery "$VISIBILITY" "$HEARTBEAT" 0 "$TMP"
   local pid2="$WORKER_PID" log2="$WORKER_LOG"
   sleep 1
-  [ ! -d "$TMP/$JOB" ] || fail "restart không dọn thư mục mồ côi $TMP/$JOB"
+  if tmp_dir_exists "$TMP" "$JOB"; then
+    fail "restart không dọn thư mục mồ côi $TMP/$JOB"
+  fi
   record "sigkill: restart đã dọn thư mục mồ côi của $JOB"
 
   start=$SECONDS
@@ -473,13 +683,14 @@ scenario_sigkill() {
   wait_for_job_line "$log2" "$JOB" job_finished 180
   wait_status "$VIDEO" "COMPLETED" 60
   assert_assets "$PROJECT" "$VIDEO"
+  assert_playable "$PROJECT" "$VIDEO" sigkill
   assert_temp_clean "$TMP"
   stop_worker sigkill-redelivery "$pid2" 0
   record "sigkill: PASS"
 }
 
 scenario_dlq() {
-  echo "==> Ca 3/3: DLQ sau 3 lần nhận (input không tồn tại)"
+  echo "==> Ca DLQ sau 3 lần nhận (input không tồn tại)"
   setup_queue dlq
   JOB="job-dlq-$RUN_ID"
   VIDEO="vid-dlq-$RUN_ID"
@@ -533,8 +744,84 @@ scenario_dlq() {
   record "dlq: PASS"
 }
 
-scenario_sigterm
-scenario_sigkill
-scenario_dlq
+scenario_competing() {
+  echo "==> Ca COMPETING: hai worker cùng xử lý một video (at-least-once)"
+  setup_queue competing
+  JOB="job-competing-$RUN_ID"
+  VIDEO="vid-competing-$RUN_ID"
+  KEY="$PROJECT/$VIDEO/source.mp4"
+  TMP_A="$RUN_DIR/tmp-competing-a"
+  TMP_B="$RUN_DIR/tmp-competing-b"
+  echo "$VIDEO" >> "$RUN_DIR/videos.txt"
+  seed_video "$VIDEO" "$PROJECT" "$KEY"
+  upload_sample "$KEY"
 
-record "==> Tất cả kịch bản PASS"
+  start_worker competing-a "$VISIBILITY" "$HEARTBEAT" "$FFMPEG_DELAY" "$TMP_A"
+  local ref_a="$WORKER_PID" log_a="$WORKER_LOG"
+  start_worker competing-b "$VISIBILITY" "$HEARTBEAT" "$FFMPEG_DELAY" "$TMP_B"
+  local ref_b="$WORKER_PID" log_b="$WORKER_LOG"
+  sleep 2
+  # Hai message trùng jobId: mô phỏng SQS giao cùng job cho hai worker khi
+  # chưa có lease/thuê quyền sở hữu (A5, hợp đồng còn DRAFT).
+  send_job "$JOB" "$VIDEO" "$PROJECT" "$KEY"
+  send_job "$JOB" "$VIDEO" "$PROJECT" "$KEY"
+  record "competing: đã gửi 2 message cùng jobId=$JOB"
+
+  wait_for_job_line "$log_a" "$JOB" transcode_started 120
+  wait_for_job_line "$log_b" "$JOB" transcode_started 120
+  record "competing: cả hai worker transcode cùng video (không có lease)"
+
+  local start=$SECONDS finished=0 completed=0 by_other=0 visible=1 not_visible=1
+  while [ $((SECONDS - start)) -lt 240 ]; do
+    finished=$(( $(count_job_msg "$log_a" "$JOB" job_finished) + $(count_job_msg "$log_b" "$JOB" job_finished) ))
+    if [ "$finished" -ge 2 ]; then break; fi
+    sleep 0.5
+  done
+  [ "$finished" -ge 2 ] || fail "hai worker chưa kết thúc (job_finished=$finished)"
+  completed=$(( $(grep -Fc '"status":"COMPLETED"' "$log_a" || true) + $(grep -Fc '"status":"COMPLETED"' "$log_b" || true) ))
+  by_other=$(( $(grep -Fc '"status":"COMPLETED_BY_OTHER"' "$log_a" || true) + $(grep -Fc '"status":"COMPLETED_BY_OTHER"' "$log_b" || true) ))
+  [ "$completed" -eq 1 ] || fail "job_finished COMPLETED=$completed (mong 1)"
+  [ "$by_other" -eq 1 ] || fail "job_finished COMPLETED_BY_OTHER=$by_other (mong 1)"
+  record "competing: 1 COMPLETED + 1 COMPLETED_BY_OTHER; worker thua ACK message trùng"
+
+  wait_status "$VIDEO" "COMPLETED" 60
+  assert_assets "$PROJECT" "$VIDEO"
+  assert_playable "$PROJECT" "$VIDEO" competing
+  local attempts
+  attempts="$(get_attempt_count "$VIDEO")"
+  [ "$attempts" -ge 2 ] || fail "attemptCount=$attempts (mong >=2)"
+  record "competing: attemptCount=$attempts — cả hai worker đã MarkProcessing"
+
+  start=$SECONDS
+  while [ $((SECONDS - start)) -lt 30 ]; do
+    read -r visible not_visible < <(queue_counts)
+    if [ "$visible" = "0" ] && [ "$not_visible" = "0" ]; then break; fi
+    sleep 0.5
+  done
+  [ "$visible" = "0" ] && [ "$not_visible" = "0" ] \
+    || fail "queue chưa rỗng sau ACK: visible=$visible notVisible=$not_visible"
+  record "competing: queue rỗng (cả hai message đã ACK)"
+
+  stop_worker competing-a "$ref_a" 0
+  stop_worker competing-b "$ref_b" 0
+  assert_temp_clean "$TMP_A"
+  assert_temp_clean "$TMP_B"
+  record "competing: PASS — ghi nhận hạn chế không exactly-once (transcode trùng)"
+}
+
+run_scenario() {
+  case "$1" in
+    sigterm) scenario_sigterm ;;
+    sigkill) scenario_sigkill ;;
+    dlq) scenario_dlq ;;
+    competing) scenario_competing ;;
+    *) fail "kịch bản không hợp lệ: $1 (dùng sigterm,sigkill,dlq,competing)" ;;
+  esac
+}
+
+scenario_list="$(printf '%s' "$SCENARIOS" | tr ',' ' ')"
+for scenario in $scenario_list; do
+  run_scenario "$scenario"
+done
+
+record "==> Tất cả kịch bản PASS ($SCENARIOS)"

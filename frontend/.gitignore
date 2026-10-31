@@ -1,5 +1,7 @@
-node_modules/
+clnode_modules/
 dist/
+dist-mock/
+.nginx/
 .env
 .env.*.local
 *.tsbuildinfo

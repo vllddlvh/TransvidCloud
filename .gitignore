@@ -19,8 +19,10 @@ worker/*.exe
 # Video mẫu lớn — không commit (xem local/samples/README.md)
 local/samples/*
 !local/samples/README.md
-# Bằng chứng chaos local (log worker) không commit
+# Bằng chứng chaos/e2e/bench local (log worker) không commit
 local/chaos-logs/
+local/e2e-logs/
+local/bench-logs/
 
 # Frontend
 frontend/node_modules/

@@ -1,0 +1,5 @@
+bin/
+testdata/
+scripts/
+README.md
+*.log
