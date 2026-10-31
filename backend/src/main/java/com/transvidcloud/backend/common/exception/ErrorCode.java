@@ -1,0 +1,61 @@
+package com.transvidcloud.backend.common.exception;
+
+import org.springframework.http.HttpStatus;
+
+/**
+ * Bảng liệt kê các mã lỗi chuẩn của TransvidCloud Backend.
+ * Mỗi mã lỗi ánh xạ với mã máy đọc được (String code), thông báo mặc định và HttpStatus.
+ */
+public enum ErrorCode {
+    // 400 Bad Request
+    VALIDATION_ERROR("VALIDATION_ERROR", "Dữ liệu yêu cầu không hợp lệ", HttpStatus.BAD_REQUEST),
+    MALFORMED_JSON("MALFORMED_JSON", "Định dạng JSON trong request body không hợp lệ", HttpStatus.BAD_REQUEST),
+    TYPE_MISMATCH("TYPE_MISMATCH", "Kiểu dữ liệu của tham số không đúng", HttpStatus.BAD_REQUEST),
+    INVALID_PARAMETER("INVALID_PARAMETER", "Tham số không hợp lệ", HttpStatus.BAD_REQUEST),
+
+    // 401 Unauthorized
+    UNAUTHENTICATED("UNAUTHENTICATED", "Yêu cầu xác thực tài khoản hoặc token không hợp lệ", HttpStatus.UNAUTHORIZED),
+
+    // 403 Forbidden
+    UNAUTHORIZED("UNAUTHORIZED", "Bạn không có quyền thực hiện thao tác trên tài nguyên này", HttpStatus.FORBIDDEN),
+
+    // 404 Not Found
+    NOT_FOUND("NOT_FOUND", "Không tìm thấy tài nguyên yêu cầu", HttpStatus.NOT_FOUND),
+
+    // 405 Method Not Allowed
+    METHOD_NOT_ALLOWED("METHOD_NOT_ALLOWED", "Phương thức HTTP không được hỗ trợ trên endpoint này", HttpStatus.METHOD_NOT_ALLOWED),
+
+    // 409 Conflict
+    CONFLICT("CONFLICT", "Trạng thái tài nguyên xung đột với yêu cầu thao tác", HttpStatus.CONFLICT),
+
+    // 413 Payload Too Large
+    UPLOAD_LIMIT_EXCEEDED("UPLOAD_LIMIT_EXCEEDED", "Dung lượng tải lên vượt quá giới hạn tối đa cho phép", HttpStatus.PAYLOAD_TOO_LARGE),
+
+    // 422 Unprocessable Entity
+    UNSUPPORTED_MEDIA_TYPE("UNSUPPORTED_MEDIA_TYPE", "Định dạng phương tiện hoặc nội dung không được hỗ trợ", HttpStatus.UNPROCESSABLE_ENTITY),
+
+    // 500 Internal Server Error
+    INTERNAL_SERVER_ERROR("INTERNAL_SERVER_ERROR", "Đã xảy ra sự cố nội bộ trong hệ thống. Vui lòng thử lại sau", HttpStatus.INTERNAL_SERVER_ERROR);
+
+    private final String code;
+    private final String defaultMessage;
+    private final HttpStatus httpStatus;
+
+    ErrorCode(String code, String defaultMessage, HttpStatus httpStatus) {
+        this.code = code;
+        this.defaultMessage = defaultMessage;
+        this.httpStatus = httpStatus;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getDefaultMessage() {
+        return defaultMessage;
+    }
+
+    public HttpStatus getHttpStatus() {
+        return httpStatus;
+    }
+}
