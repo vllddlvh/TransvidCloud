@@ -19,9 +19,11 @@ public enum ErrorCode {
 
     // 403 Forbidden
     UNAUTHORIZED("UNAUTHORIZED", "Bạn không có quyền thực hiện thao tác trên tài nguyên này", HttpStatus.FORBIDDEN),
+    ACCESS_DENIED("ACCESS_DENIED", "Bạn không có quyền truy cập tài nguyên này", HttpStatus.FORBIDDEN),
 
     // 404 Not Found
     NOT_FOUND("NOT_FOUND", "Không tìm thấy tài nguyên yêu cầu", HttpStatus.NOT_FOUND),
+    RESOURCE_NOT_FOUND("RESOURCE_NOT_FOUND", "Không tìm thấy tài nguyên yêu cầu", HttpStatus.NOT_FOUND),
 
     // 405 Method Not Allowed
     METHOD_NOT_ALLOWED("METHOD_NOT_ALLOWED", "Phương thức HTTP không được hỗ trợ trên endpoint này", HttpStatus.METHOD_NOT_ALLOWED),
@@ -29,6 +31,7 @@ public enum ErrorCode {
     // 409 Conflict
     CONFLICT("CONFLICT", "Trạng thái tài nguyên xung đột với yêu cầu thao tác", HttpStatus.CONFLICT),
     EMAIL_ALREADY_EXISTS("EMAIL_ALREADY_EXISTS", "Địa chỉ email đã được sử dụng trên hệ thống", HttpStatus.CONFLICT),
+    RESOURCE_IN_USE("RESOURCE_IN_USE", "Tài nguyên đang được sử dụng hoặc có tiến trình xử lý chưa hoàn tất", HttpStatus.CONFLICT),
 
     // 413 Payload Too Large
     UPLOAD_LIMIT_EXCEEDED("UPLOAD_LIMIT_EXCEEDED", "Dung lượng tải lên vượt quá giới hạn tối đa cho phép", HttpStatus.PAYLOAD_TOO_LARGE),
