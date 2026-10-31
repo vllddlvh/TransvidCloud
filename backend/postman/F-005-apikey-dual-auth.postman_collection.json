@@ -1,0 +1,1043 @@
+{
+  "info": {
+    "_postman_id": "tvc-f005-apikey-dual-auth",
+    "name": "F-005: Quản lý API Key & Xác thực Dual Security JWT + X-API-Key",
+    "description": "Bộ Postman Collection chuyên biệt cho Feature F-005: Quản lý API Key & Xác thực Dual Security JWT + X-API-Key (Epic A2). Kiểm thử độc lập toàn bộ vòng đời sinh khóa CSPRNG, lưu trữ Hash SHA-256 trên DynamoDB, GSI project-index, giới hạn 5 API Keys/Project, xóa cứng tức thì, bộ lọc ApiKeyAuthenticationFilter kiểm soát ranh giới Project và cơ chế ưu tiên Bearer JWT khi gửi đồng thời.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api",
+      "type": "string"
+    },
+    {
+      "key": "tokenA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectAId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectBId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "rawKey1",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "keyHash1",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Setup - Đăng ký tài khoản Người dùng A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về accessToken hợp lệ cho User A\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('tokenA', jsonData.accessToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"owner.alpha.{{$timestamp}}@transvidcloud.io\",\n  \"password\": \"Password123@\",\n  \"fullName\": \"Chủ Sở Hữu Alpha\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        },
+        "description": "Đăng ký Người dùng A để tạo phiên làm việc JWT Bearer token."
+      }
+    },
+    {
+      "name": "02. Setup - Đăng ký tài khoản Người dùng B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về accessToken hợp lệ cho User B\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('tokenB', jsonData.accessToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"owner.beta.{{$timestamp}}@transvidcloud.io\",\n  \"password\": \"Password123@\",\n  \"fullName\": \"Chủ Sở Hữu Beta\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        },
+        "description": "Đăng ký Người dùng B để kiểm tra cô lập đa người thuê (Multi-tenant)."
+      }
+    },
+    {
+      "name": "03. Setup - User A tạo Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"ProjectId có tiền tố prj_\", function () {",
+              "    pm.expect(jsonData.projectId).to.match(/^prj_/);",
+              "    pm.expect(jsonData.name).to.eql('Dự án Alpha Transvid');",
+              "});",
+              "if (jsonData.projectId) {",
+              "    pm.collectionVariables.set('projectAId', jsonData.projectId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Dự án Alpha Transvid\",\n  \"description\": \"Dự án video của Alpha\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "User A tạo Project Alpha để gán API Key."
+      }
+    },
+    {
+      "name": "04. Setup - User B tạo Project B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"ProjectId có tiền tố prj_\", function () {",
+              "    pm.expect(jsonData.projectId).to.match(/^prj_/);",
+              "    pm.expect(jsonData.name).to.eql('Dự án Beta Transvid');",
+              "});",
+              "if (jsonData.projectId) {",
+              "    pm.collectionVariables.set('projectBId', jsonData.projectId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Dự án Beta Transvid\",\n  \"description\": \"Dự án video của Beta\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "User B tạo Project Beta để kiểm tra bảo vệ ranh giới Tenant."
+      }
+    },
+    {
+      "name": "05. US1 - Tạo API Key 1 thành công (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"rawKey có tiền tố tvc_live_ và độ dài 41 ký tự\", function () {",
+              "    pm.expect(jsonData.rawKey).to.match(/^tvc_live_[0-9a-f]{32}$/);",
+              "    pm.expect(jsonData.rawKey.length).to.eql(41);",
+              "});",
+              "pm.test(\"keyPrefix đúng định dạng rút gọn 8 ký tự hex\", function () {",
+              "    pm.expect(jsonData.keyPrefix).to.match(/^tvc_live_[0-9a-f]{8}\\.\\.\\.$/);",
+              "    pm.expect(jsonData.rawKey.startsWith(jsonData.keyPrefix.replace('...', ''))).to.be.true;",
+              "});",
+              "pm.test(\"keyHash là chuỗi SHA-256 64 ký tự hex\", function () {",
+              "    pm.expect(jsonData.keyHash).to.match(/^[0-9a-f]{64}$/);",
+              "    pm.expect(jsonData.name).to.eql('CI/CD Pipeline Key');",
+              "    pm.expect(jsonData.createdAt).to.be.a('string');",
+              "});",
+              "if (jsonData.rawKey) {",
+              "    pm.collectionVariables.set('rawKey1', jsonData.rawKey);",
+              "    pm.collectionVariables.set('keyHash1', jsonData.keyHash);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"CI/CD Pipeline Key\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "User A sinh API Key 1 cho Project A, nhận rawKey duy nhất 1 lần."
+      }
+    },
+    {
+      "name": "06. US1 - Tạo API Key thất bại khi tên trống (400 Bad Request)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 400 Bad Request\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi VALIDATION_ERROR\", function () {",
+              "    pm.expect(jsonData.code).to.eql('VALIDATION_ERROR');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"   \"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Validation chặn tạo key khi tên key để trống."
+      }
+    },
+    {
+      "name": "07. US1 - Tạo API Key thất bại khi User B thao tác trên Project A (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi ACCESS_DENIED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Xâm nhập trái phép\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Chặn người dùng khác tạo key trên project không thuộc quyền sở hữu."
+      }
+    },
+    {
+      "name": "08. US2 - Liệt kê API Key của Project A (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về danh sách metadata API Key không lộ rawKey\", function () {",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "    pm.expect(jsonData.items.length).to.be.at.least(1);",
+              "    var found = jsonData.items.find(function(k) { return k.keyHash === pm.collectionVariables.get('keyHash1'); });",
+              "    pm.expect(found).to.not.be.undefined;",
+              "    pm.expect(found.keyPrefix).to.match(/^tvc_live_[0-9a-f]{8}\\.\\.\\.$/);",
+              "    pm.expect(found.name).to.eql('CI/CD Pipeline Key');",
+              "    pm.expect(found.createdAt).to.be.a('string');",
+              "    jsonData.items.forEach(function(item) {",
+              "        pm.expect(item.rawKey).to.be.undefined;",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "User A liệt kê danh sách API Key của Project A qua GSI project-index."
+      }
+    },
+    {
+      "name": "09. US2 - Liệt kê API Key thất bại khi User B xem Project A (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi ACCESS_DENIED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Chặn người dùng B xem trộm danh sách API Key của Project A."
+      }
+    },
+    {
+      "name": "10. US4 & US5 - Chặn X-API-Key gọi endpoint cá nhân /projects (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi ACCESS_DENIED khi API Key cố truy cập endpoint web user\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{rawKey1}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "API Key chỉ có vai trò ROLE_API_KEY, bị cấm truy cập danh mục dự án cá nhân."
+      }
+    },
+    {
+      "name": "11. US4 & US5 - Chặn X-API-Key gọi endpoint quản lý api-keys (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi ACCESS_DENIED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{rawKey1}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Chặn API Key cố tự quản lý danh sách API Key của Project."
+      }
+    },
+    {
+      "name": "12. US4 - Chặn X-API-Key Project A gọi chéo sang Project B (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi ACCESS_DENIED khi gọi chéo Project\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{rawKey1}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectBId}}/some-resource",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectBId}}", "some-resource"]
+        },
+        "description": "Bộ lọc đối chiếu auth.getProjectId() với projectId trên URL và chặn ngay lập tức."
+      }
+    },
+    {
+      "name": "13. US4 - Chặn X-API-Key sai định dạng (401 Unauthorized)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi UNAUTHENTICATED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('UNAUTHENTICATED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "invalid_key_prefix_and_length"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/some-resource",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "some-resource"]
+        },
+        "description": "Header X-API-Key không đúng chuẩn tvc_live_<32_hex> bị chặn 401."
+      }
+    },
+    {
+      "name": "14. US4 - Chặn X-API-Key không tồn tại trong CSDL (401 Unauthorized)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi UNAUTHENTICATED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('UNAUTHENTICATED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "tvc_live_0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/some-resource",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "some-resource"]
+        },
+        "description": "API Key đúng định dạng nhưng không tìm thấy keyHash tương ứng trong DynamoDB."
+      }
+    },
+    {
+      "name": "15. US5 - Gửi đồng thời Bearer JWT và X-API-Key: Ưu tiên Bearer JWT (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về thông tin Project A thành công do ưu tiên Bearer JWT\", function () {",
+              "    pm.expect(jsonData.projectId).to.eql(pm.collectionVariables.get('projectAId'));",
+              "    pm.expect(jsonData.name).to.eql('Dự án Alpha Transvid');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "invalid_corrupted_key_here"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}"]
+        },
+        "description": "Khi cả hai header cùng có mặt, bộ lọc ưu tiên xử lý Bearer JWT, bỏ qua API Key hỏng."
+      }
+    },
+    {
+      "name": "16. US1 - Tạo thêm Key 2 cho Project A (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Key 2 - Background Worker\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Tạo key thứ 2 nhằm kiểm thử hạn mức 5 keys."
+      }
+    },
+    {
+      "name": "17. US1 - Tạo thêm Key 3 cho Project A (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Key 3 - Video Processing Daemon\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Tạo key thứ 3."
+      }
+    },
+    {
+      "name": "18. US1 - Tạo thêm Key 4 cho Project A (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Key 4 - Backup Service\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Tạo key thứ 4."
+      }
+    },
+    {
+      "name": "19. US1 - Tạo thêm Key 5 cho Project A - đạt tối đa 5 keys (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Key 5 - Webhook Dispatcher\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Tạo key thứ 5 đạt ngưỡng giới hạn 5 API Key trên một Project."
+      }
+    },
+    {
+      "name": "20. US1 - Tạo Key thứ 6 bị từ chối do vượt hạn ngạch 5 keys (400 Bad Request)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 400 Bad Request\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi INVALID_KEY khi vượt quá 5 keys\", function () {",
+              "    pm.expect(jsonData.code).to.eql('INVALID_KEY');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Key 6 - Exceeding Limit\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Hệ thống từ chối tạo key thứ 6 với mã lỗi INVALID_KEY."
+      }
+    },
+    {
+      "name": "21. US3 - Thu hồi API Key 1 thất bại khi User B xóa trộm (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi ACCESS_DENIED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys/{{keyHash1}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys", "{{keyHash1}}"]
+        },
+        "description": "Chặn người dùng B thu hồi key của Project A."
+      }
+    },
+    {
+      "name": "22. US3 - Thu hồi API Key 1 thành công bởi User A (204 No Content)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 204 No Content\", function () {",
+              "    pm.response.to.have.status(204);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys/{{keyHash1}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys", "{{keyHash1}}"]
+        },
+        "description": "User A thu hồi xóa cứng Key 1 khỏi bảng apikeys trong DynamoDB."
+      }
+    },
+    {
+      "name": "23. US3 - Dùng lại API Key 1 đã thu hồi bị từ chối ngay lập tức (401 Unauthorized)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi UNAUTHENTICATED khi key đã bị thu hồi\", function () {",
+              "    pm.expect(jsonData.code).to.eql('UNAUTHENTICATED');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{rawKey1}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/some-resource",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "some-resource"]
+        },
+        "description": "Key đã bị xóa khỏi DynamoDB nên tra cứu keyHash không tồn tại, trả về 401."
+      }
+    },
+    {
+      "name": "24. US3 - Xóa lại API Key 1 đã xóa báo lỗi không tìm thấy (404 Not Found)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi RESOURCE_NOT_FOUND\", function () {",
+              "    pm.expect(jsonData.code).to.eql('RESOURCE_NOT_FOUND');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys/{{keyHash1}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys", "{{keyHash1}}"]
+        },
+        "description": "Thao tác xóa lại key đã xóa trả về 404 RESOURCE_NOT_FOUND."
+      }
+    },
+    {
+      "name": "25. US1 - Sau khi thu hồi 1 key, tạo lại key mới thành công (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Tạo lại key thay thế thành công\", function () {",
+              "    pm.expect(jsonData.rawKey).to.match(/^tvc_live_[0-9a-f]{32}$/);",
+              "    pm.expect(jsonData.name).to.eql('Key Thay The Cho Key 1');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Key Thay The Cho Key 1\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        },
+        "description": "Sau khi xóa 1 key, số lượng key giảm xuống 4, người dùng được phép tạo key mới."
+      }
+    }
+  ]
+}

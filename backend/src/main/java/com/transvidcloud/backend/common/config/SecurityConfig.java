@@ -1,5 +1,6 @@
 package com.transvidcloud.backend.common.config;
 
+import com.transvidcloud.backend.apikey.security.ApiKeyAuthenticationFilter;
 import java.nio.charset.StandardCharsets;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -16,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfigurationSource;
 
@@ -27,7 +29,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            CorsConfigurationSource corsConfigurationSource
+            CorsConfigurationSource corsConfigurationSource,
+            ApiKeyAuthenticationFilter apiKeyAuthenticationFilter
     ) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -44,7 +47,8 @@ public class SecurityConfig {
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}));
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
+                .addFilterBefore(apiKeyAuthenticationFilter, BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 
