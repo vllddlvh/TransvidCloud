@@ -37,7 +37,7 @@ Mỗi acceptance criterion phải có ít nhất một cách kiểm chứng ho�
    - Để được công nhận là **Real Verification** cho một Feature:
      - **Tối thiểu phải có Integration Test (`*IT.java`)** giao tiếp trực tiếp với các dịch vụ thực tế (DynamoDB, S3, SQS trên LocalStack / Testcontainers), kiểm tra đúng schema, luồng dữ liệu và transaction thực.
      - **E2E / System Test**: Đối với các luồng liên module (Upload -> S3 -> Confirm -> SQS -> Worker -> Video HLS), bắt buộc phải có kiểm chứng E2E toàn stack (`make e2e` hoặc Postman Newman runner) để chứng minh tính đúng đắn trọn vòng đời.
-   - Tuyệt đối không chấp nhận một Feature nghiệp vụ chỉ dựa vào Unit test cô lập làm bằng chứng hoàn thành.
+   - Tuyệt đối không chấp nhận một Feature nghiệp vụ chỉ dựa vào Unit test cô lập làm bằng chứng hoàn thành. Tối thiểu là Integration test và **TỐT NHẤT** sẽ là E2E testing khi có thể.
 
 ## CI/CD quality gates
 
