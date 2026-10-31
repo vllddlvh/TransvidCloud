@@ -16,6 +16,12 @@ backend/.mvn/wrapper/maven-wrapper.jar
 worker/bin/
 worker/*.exe
 
+# Video mẫu lớn — không commit (xem local/samples/README.md)
+local/samples/*
+!local/samples/README.md
+# Bằng chứng chaos local (log worker) không commit
+local/chaos-logs/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

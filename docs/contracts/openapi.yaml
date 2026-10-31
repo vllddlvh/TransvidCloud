@@ -1,22 +1,394 @@
-# DRAFT - Phương hoàn thiện ở Sprint 1. Chỉ liệt kê khung endpoint.
+# DRAFT — frontend Week1 proposal, NOT an approved backend contract.
+# Phương + App/Cloud review is required before integration; see API Integration.md.
 openapi: 3.0.3
 info:
   title: TransVidCloud API
   version: 0.1.0
+  description: >-
+    DRAFT — proposed, not approved. Existing endpoint inventory is preserved.
+    All schemas, auth envelopes, validation rules and error/status details added
+    for frontend Week1 are giả định — chờ Phương xác nhận.
+    Register and API-key operations remain intentionally unspecified outside Week1.
+x-contract-status: DRAFT — proposed, not approved
 servers:
   - url: /api
+security:
+  - bearerAuth: []
 paths:
-  /auth/register: { post: { summary: Đăng ký, responses: { "201": { description: Created } } } }
-  /auth/login:    { post: { summary: Đăng nhập (JWT), responses: { "200": { description: OK } } } }
+  /auth/register:
+    post:
+      summary: Đăng ký
+      description: DRAFT placeholder outside frontend Week1; request and response shape not approved.
+      x-contract-status: DRAFT — out of scope
+      security: []
+      responses:
+        '201': { description: Created; body intentionally unspecified }
+  /auth/login:
+    post:
+      summary: Đăng nhập (JWT)
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: DRAFT session; no refresh token or cookie contract yet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
   /projects:
-    get:  { summary: Liệt kê project của user, responses: { "200": { description: OK } } }
-    post: { summary: Tạo project, responses: { "201": { description: Created } } }
+    get:
+      summary: Liệt kê project của user
+      operationId: listProjects
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+      responses:
+        '200':
+          description: DRAFT cursor page; omit nextCursor on final page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+    post:
+      summary: Tạo project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProjectRequest' }
+      responses:
+        '201':
+          description: DRAFT created project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
   /projects/{projectId}/api-keys:
-    post: { summary: Tạo API key, responses: { "201": { description: Created } } }
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+    post:
+      summary: Tạo API key
+      description: DRAFT placeholder outside Week1; key scope/auth/body require backend review.
+      x-contract-status: DRAFT — out of scope
+      responses:
+        '201': { description: Created; body intentionally unspecified }
   /projects/{projectId}/videos:
-    get:  { summary: Liệt kê video (cursor), responses: { "200": { description: OK } } }
-    post: { summary: Khởi tạo video và nhận presigned URL, responses: { "201": { description: Created } } }
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+    get:
+      summary: Liệt kê video (cursor)
+      operationId: listVideos
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+      responses:
+        '200':
+          description: DRAFT cursor page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VideoList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+    post:
+      summary: Khởi tạo video và nhận presigned URL
+      operationId: createVideo
+      description: >-
+        DRAFT. Creates UPLOADING before PUT. No create idempotency key is proposed;
+        clients must not automatically retry this POST. See upload-limits.md.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateVideoRequest' }
+      responses:
+        '201':
+          description: DRAFT upload ticket; PUT only to uploadUrl with supplied headers
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/UploadTooLarge' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
   /videos/{videoId}/confirm:
-    post: { summary: Xác nhận đã upload (UPLOADING -> PENDING), responses: { "202": { description: Accepted } } }
+    parameters:
+      - { $ref: '#/components/parameters/VideoId' }
+    post:
+      summary: Xác nhận đã upload (UPLOADING -> PENDING)
+      operationId: confirmVideo
+      description: >-
+        DRAFT. No request body. Confirm only after verified object presence, size
+        and type. Repeated confirm of PENDING returns the unchanged Video with 202.
+        PROCESSING, COMPLETED and FAILED_* return 409, never regress.
+        The real API must verify HeadObject and enqueue idempotently; mock only
+        records a successful simulated PUT, with no worker/SQS or auto transitions.
+      responses:
+        '202':
+          description: DRAFT accepted Video in PENDING (including idempotent replay)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Video' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/UploadTooLarge' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
   /videos/{videoId}:
-    get: { summary: Chi tiết video, trạng thái, assets, responses: { "200": { description: OK } } }
+    parameters:
+      - { $ref: '#/components/parameters/VideoId' }
+    get:
+      summary: Chi tiết video, trạng thái, assets
+      operationId: getVideo
+      responses:
+        '200':
+          description: DRAFT video detail; same shape as list items
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Video' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/UnexpectedError' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        DRAFT access-token bearer auth for protected API requests only, never
+        upload PUT. Mock tokens have a MOCK algorithm marker and random capability;
+        they are NOT signed JWTs and must never be accepted by a real backend.
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    VideoId:
+      name: videoId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: DRAFT opaque continuation token; URL-encode, do not interpret as an offset.
+      schema: { type: string, minLength: 1 }
+  responses:
+    BadRequest:
+      description: DRAFT 400 INVALID_JSON or INVALID_REQUEST (non-object JSON/body on confirm)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: DRAFT 401 INVALID_CREDENTIALS for login; UNAUTHORIZED for missing/invalid/expired bearer
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: DRAFT 403 FORBIDDEN for insufficient access (multi-user authorization not simulated)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: DRAFT 404 NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: DRAFT 409 UPLOAD_NOT_COMPLETE or VIDEO_NOT_CONFIRMABLE
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UploadTooLarge:
+      description: DRAFT 413 UPLOAD_TOO_LARGE (maximum 209715200 bytes)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ValidationError:
+      description: DRAFT 422 VALIDATION_ERROR, UNSUPPORTED_FORMAT or INVALID_CURSOR
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UnexpectedError:
+      description: DRAFT error envelope including 5xx; clients also tolerate non-JSON proxy errors
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+  schemas:
+    LoginRequest:
+      description: DRAFT — giả định — chờ Phương xác nhận. Email is trimmed/lowercased; password is not trimmed.
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 1, maxLength: 128, writeOnly: true }
+    User:
+      description: DRAFT — giả định — chờ Phương xác nhận. Public profile, never password/hash.
+      type: object
+      additionalProperties: false
+      required: [userId, email, name]
+      properties:
+        userId: { type: string, minLength: 1 }
+        email: { type: string, format: email }
+        name: { type: string, minLength: 1 }
+    Session:
+      description: DRAFT — giả định — chờ Phương xác nhận. ISO expiry alongside opaque access token; no refresh contract.
+      type: object
+      additionalProperties: false
+      required: [accessToken, expiresAt, user]
+      properties:
+        accessToken: { type: string, minLength: 1, pattern: '^[!-~]+$' }
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/User' }
+    CreateProjectRequest:
+      description: DRAFT — giả định — chờ Phương xác nhận. Required description may be empty; name trimmed and not whitespace-only.
+      type: object
+      additionalProperties: false
+      required: [name, description]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100, pattern: '\S' }
+        description: { type: string, maxLength: 1000 }
+    Project:
+      description: DRAFT — giả định — chờ Phương xác nhận. API projection, not the DynamoDB item; excludes owner/webhook secrets.
+      type: object
+      additionalProperties: false
+      required: [projectId, name, description, videoCount, createdAt]
+      properties:
+        projectId: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+        videoCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+    ProjectList:
+      description: DRAFT — giả định — chờ Phương xác nhận. No total; nextCursor omitted (not null) on last page.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Project' }
+        nextCursor: { type: string, minLength: 1 }
+    CreateVideoRequest:
+      description: >-
+        DRAFT — giả định — chờ Phương xác nhận. Extension is case-insensitive;
+        allowed extension/MIME pairs are mp4/video/mp4, mov/video/quicktime,
+        mkv/video/x-matroska, webm/video/webm. Pair validation is semantic, not
+        expressed by the MIME pattern alone. No paths/control characters in filename.
+      type: object
+      additionalProperties: false
+      required: [filename, sizeBytes, contentType]
+      properties:
+        filename: { type: string, minLength: 1, maxLength: 255, pattern: '^[^/\\\x00-\x1f]+$' }
+        sizeBytes: { type: integer, minimum: 1, maximum: 209715200 }
+        contentType:
+          type: string
+          pattern: '^video/(mp4|quicktime|x-matroska|webm)$'
+    VideoStatus:
+      description: DRAFT — mirrors video-state-machine.md; no client-owned processing transitions.
+      type: string
+      enum: [UPLOADING, PENDING, PROCESSING, COMPLETED, FAILED_VALIDATION, FAILED_TRANSCODE, FAILED_STORAGE]
+    VideoAssets:
+      description: >-
+        DRAFT — giả định — chờ Phương xác nhận. Served /media URLs, not raw S3
+        keys; hls required when assets present, other renditions/thumbnail optional.
+        Follows s3-key-convention.md. Omitted assets/fields are not null.
+      type: object
+      additionalProperties: false
+      required: [hls]
+      properties:
+        hls: { type: string, pattern: '^/media/[^/]+/[^/]+/hls/master\.m3u8$' }
+        hls360: { type: string, pattern: '^/media/[^/]+/[^/]+/hls/360p/index\.m3u8$' }
+        hls720: { type: string, pattern: '^/media/[^/]+/[^/]+/hls/720p/index\.m3u8$' }
+        thumbnail: { type: string, pattern: '^/media/[^/]+/[^/]+/thumb/default\.jpg$' }
+    Video:
+      description: >-
+        DRAFT — giả định — chờ Phương xác nhận. List/detail/upload/confirm use
+        this same public projection. COMPLETED fixtures include assets, FAILED_*
+        include errorCode. Conditional presence is a semantic rule reviewed in tests,
+        not an OpenAPI discriminated union. Internal keys, attempts and timestamps
+        for worker execution are not exposed. Duration is optional until probed.
+      type: object
+      additionalProperties: false
+      required: [videoId, projectId, filename, sizeBytes, contentType, status, createdAt, updatedAt]
+      properties:
+        videoId: { type: string, minLength: 1 }
+        projectId: { type: string, minLength: 1 }
+        filename: { type: string, minLength: 1, maxLength: 255 }
+        sizeBytes: { type: integer, minimum: 1, maximum: 209715200 }
+        contentType: { type: string, minLength: 1 }
+        status: { $ref: '#/components/schemas/VideoStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        assets: { $ref: '#/components/schemas/VideoAssets' }
+        errorCode: { type: string, minLength: 1 }
+        durationSeconds: { type: number, minimum: 0 }
+    VideoList:
+      description: DRAFT — giả định — chờ Phương xác nhận. Same cursor envelope as ProjectList.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Video' }
+        nextCursor: { type: string, minLength: 1 }
+    UploadTicket:
+      description: >-
+        DRAFT — giả định — chờ Phương xác nhận. Relative mock capability URL;
+        real presigned URL may be absolute. Expires in 15 minutes. Only supplied
+        headers go to PUT, never API bearer auth. Mock returns Content-Type only;
+        browser manages Content-Length (forbidden to set manually).
+      type: object
+      additionalProperties: false
+      required: [video, uploadUrl, expiresAt, headers]
+      properties:
+        video: { $ref: '#/components/schemas/Video' }
+        uploadUrl: { type: string, format: uri-reference, minLength: 1 }
+        expiresAt: { type: string, format: date-time }
+        headers:
+          type: object
+          additionalProperties: { type: string }
+    ErrorResponse:
+      description: >-
+        DRAFT — giả định — chờ Phương xác nhận. HTTP status is not duplicated
+        in JSON. code is an extensible string (not an approved enum); message
+        is user-displayable text, not a stable identifier. No field-errors/requestId yet.
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, minLength: 1 }
+            message: { type: string, minLength: 1 }

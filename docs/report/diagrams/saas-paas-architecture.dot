@@ -1,0 +1,68 @@
+// TransVidCloud — Kiến trúc hai lớp SaaS & PaaS trên một lõi xử lý chung
+// Nguồn: docs/docs-common/1. Overall system.md, docs/contracts/openapi.yaml (DRAFT)
+// Render: dot -Tpng -Gdpi=160 saas-paas-architecture.dot -o saas-paas-architecture.png
+digraph TransVidCloudArchitecture {
+  graph [rankdir=TB, dpi=160, fontname="Helvetica", compound=true,
+         labelloc="t", fontsize=14,
+         label="TransVidCloud — Một backend, hai cách dùng, một lõi xử lý",
+         pad=0.35, nodesep=0.45, ranksep=0.55];
+  node  [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled",
+         color="#444444", fillcolor="#f7f7f7", margin="0.15,0.09"];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  // ===== Lớp tiếp cận (Access) =====
+  subgraph cluster_access {
+    label="Lớp tiếp cận — SaaS & PaaS";
+    style="rounded,dashed"; color="#999999"; fontname="Helvetica"; fontsize=11;
+
+    User   [label="Người dùng SaaS\n(creator / giảng viên)", fillcolor="#e8f0fe"];
+    Web    [label="SaaS Web\nReact + Vite · hls.js", fillcolor="#e8f0fe"];
+    ExtApp [label="Ứng dụng bên ngoài\n(E-learning, ...)", fillcolor="#fef7e0"];
+    Dev    [label="Developer\n(hệ thống khách hàng)", fillcolor="#fef7e0"];
+  }
+
+  // ===== Entry =====
+  CF [label="CloudFront\nmột entry HTTPS:\n/ (web) · /api/* · /media/*",
+      fillcolor="#e6f4ea"];
+
+  // ===== Backend dùng chung =====
+  API [label="API — Spring Boot\nauth (JWT / API key) · projects · videos\npresign · confirm · status",
+       fillcolor="#fdece6"];
+
+  // ===== Lõi xử lý dùng chung =====
+  subgraph cluster_core {
+    label="Lõi xử lý dùng chung (Cloud core)";
+    style="rounded"; color="#666666"; fontname="Helvetica"; fontsize=11;
+
+    S3In   [label="S3 input\n{projectId}/{videoId}/source.ext", shape=cylinder, fillcolor="#fff3e0"];
+    S3Out  [label="S3 output\nHLS 360p/720p · thumbnail", shape=cylinder, fillcolor="#fff3e0"];
+    SQS    [label="Amazon SQS + DLQ\njob queue · retry", shape=box, fillcolor="#f3e8fd"];
+    Worker [label="EC2 Worker ASG (Spot)\nGo + FFmpeg\ntranscode → HLS + thumbnail", fillcolor="#f3e8fd"];
+    DDB    [label="DynamoDB\nusers · projects · apikeys · videos\n(metadata + state + assets)", shape=cylinder, fillcolor="#fff3e0"];
+    CW     [label="CloudWatch\nbacklog · CPU · số worker", shape=box, style="rounded,filled,dashed", fillcolor="#f0f0f0"];
+  }
+
+  Viewer [label="Người xem\n(HLS qua edge)", fillcolor="#e6f4ea"];
+
+  // ===== Cạnh (label = loại quan hệ) =====
+  User   -> Web    [label="dùng UI"];
+  Dev    -> ExtApp [label="tích hợp"];
+
+  Web    -> CF     [label="gọi /api/* (JWT)"];
+  ExtApp -> CF     [label="gọi REST /api/* (API key)"];
+  CF     -> API    [label="routes-to (Tunnel)"];
+
+  API    -> S3In   [label="cấp presigned PUT"];
+  API    -> DDB    [label="đọc/ghi metadata"];
+  API    -> SQS    [label="publishes job (confirm)"];
+
+  SQS    -> Worker [label="consumes (at-least-once)"];
+  Worker -> S3In   [label="downloads input"];
+  Worker -> S3Out  [label="writes output"];
+  Worker -> DDB    [label="updates state + assets"];
+  Worker -> CW     [label="publishes metrics", style=dashed];
+  SQS    -> CW     [label="queue metrics", style=dashed];
+
+  S3Out  -> CF     [label="/media/* (HLS)"];
+  CF     -> Viewer [label="phát qua edge"];
+}
