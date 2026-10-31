@@ -1,0 +1,2 @@
+# Mỗi dòng không rỗng và không bắt đầu bằng # là một command được scripts/verify.sh thực thi bằng `bash -lc`.
+./mvnw -B test

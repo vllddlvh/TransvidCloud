@@ -12,9 +12,12 @@ Các endpoint hiện có trong draft:
 | `POST` | `/auth/login` | Đăng nhập, cấp JWT |
 | `GET` | `/projects` | Liệt kê project của user |
 | `POST` | `/projects` | Tạo project |
+| `PUT/PATCH` | `/projects` | Sửa metadata project |
+| `DELETE` | `/projects` | Xóa project|
 | `POST` | `/projects/{projectId}/api-keys` | Tạo API key |
 | `GET` | `/projects/{projectId}/videos` | Liệt kê video theo cursor |
 | `POST` | `/projects/{projectId}/videos` | Khởi tạo video và presigned URL |
+| `DELETE` | `/projects/{projectId}/videos` | Xóa video khỏi project|
 | `POST` | `/videos/{videoId}/confirm` | Xác nhận upload |
 | `GET` | `/videos/{videoId}` | Chi tiết, trạng thái và assets |
 

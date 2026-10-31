@@ -2,7 +2,7 @@
 
 ## Yêu cầu
 
-- Java 17 theo tech stack dự kiến.
+- Java 21 LTS theo tech stack dự kiến.
 - Build tool và lệnh chạy phải theo `backend/` thực tế; không đoán tên task Maven/Gradle.
 - AWS SDK/cấu hình endpoint được quản lý qua cấu hình, không hard-code trong business logic.
 

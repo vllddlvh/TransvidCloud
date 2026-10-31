@@ -1,0 +1,18 @@
+Bắt đầu một development session cho Identity Service.
+
+Trước khi thực hiện bất kỳ thay đổi nào:
+
+1. Đọc `AGENTS.md` và tuân thủ các chỉ dẫn trong đó.
+2. Đọc `session/session-start-checklist.md`.
+3. Đọc `PROGRESS.md`, `backlog/features.md` và các tài liệu Harness liên quan.
+4. Đọc `.harness/project-config.md` và `.harness/verify-commands.txt`.
+5. Kiểm tra Git branch và working tree.
+6. Đọc `docs/README.md` nếu có, sau đó khám phá những tài liệu liên quan đến Identity, User, RBAC, API, database và testing.
+7. Xác nhận các lệnh verify thực tế của dự án. Không tự suy đoán hoặc thay đổi lệnh khi chưa có bằng chứng.
+
+Chưa triển khai code. Hãy báo cáo:
+- Project context đã nắm được.
+- Các tài liệu đã đọc.
+- Những điều đã xác nhận và những điều chưa rõ.
+- Trạng thái Git và trạng thái verify baseline.
+- Các ràng buộc cần tuân thủ khi thực hiện feature mới.
