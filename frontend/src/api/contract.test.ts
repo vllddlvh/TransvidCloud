@@ -10,7 +10,10 @@ import { createHandlers } from '../mocks/handlers'
 import { createFixtures } from '../mocks/fixtures'
 import {
   normalizeSession,
+  normalizeUserSummary,
   normalizeProject,
+  normalizeApiKey,
+  normalizeCreatedApiKey,
   normalizeVideo,
   normalizeUploadTicket,
 } from './types'
@@ -65,7 +68,12 @@ async function call(path: string, method = 'GET', body?: unknown) {
 }
 
 it('defines every official Backend SSOT endpoint with resolvable path parameters and schemas', () => {
-  for (const path of ['/auth/register', '/auth/login', '/projects', '/projects/{projectId}/api-keys', '/projects/{projectId}/videos', '/videos/{videoId}/confirm', '/videos/{videoId}']) {
+  for (const path of [
+    '/auth/register', '/auth/login', '/auth/me',
+    '/projects', '/projects/{projectId}',
+    '/projects/{projectId}/api-keys', '/projects/{projectId}/api-keys/{keyHash}',
+    '/projects/{projectId}/videos', '/videos/{videoId}/confirm', '/videos/{videoId}',
+  ]) {
     expect(contract.paths[path]).toBeDefined()
     for (const placeholder of path.matchAll(/\{(\w+)\}/g)) {
       const parameters = contract.paths[path].parameters ?? []
@@ -76,7 +84,8 @@ it('defines every official Backend SSOT endpoint with resolvable path parameters
   }
   for (const name of [
     'AuthResponse', 'RegisterRequest', 'LoginRequest', 'UserSummary',
-    'CreateProjectRequest', 'ProjectResponse', 'ProjectListResponse',
+    'CreateProjectRequest', 'UpdateProjectRequest', 'ProjectResponse', 'ProjectListResponse',
+    'CreateApiKeyRequest', 'ApiKeyMetadataResponse', 'ApiKeyCreatedResponse', 'ApiKeyListResponse',
     'InitVideoRequest', 'InitVideoResponse', 'PresignedUploadInfo',
     'VideoResponse', 'VideoPageResponse', 'VideoAssets', 'ErrorResponse',
   ]) {
@@ -187,6 +196,28 @@ it('validates Backend SSOT wire payloads against OpenAPI and normalizes them for
     timestamp: '2026-10-31T09:20:00Z',
   }
   validate('ErrorResponse', errorResponse)
+
+  const createdApiKeyResponse = {
+    keyHash: '8a9d2f4e1c0b7a6d5e4f3c2b1a0987654321fedcba9876543210abcdef123456',
+    projectId: 'prj_1c05d9',
+    name: 'E-Learning Backend Key',
+    keyPrefix: 'tvc_live_7f9a8b2c...',
+    rawKey: 'tvc_live_7f9a8b2c4e109d3a55b12c88e00192fa',
+    createdAt: '2026-10-31T08:10:00Z',
+  }
+  validate('ApiKeyCreatedResponse', createdApiKeyResponse)
+  expect(normalizeCreatedApiKey(createdApiKeyResponse)).toEqual(createdApiKeyResponse)
+
+  const { rawKey: _ignoredRawKey, ...apiKeyResponse } = createdApiKeyResponse
+  validate('ApiKeyMetadataResponse', apiKeyResponse)
+  expect(normalizeApiKey(apiKeyResponse)).toEqual(apiKeyResponse)
+
+  validate('UserSummary', authResponse.user)
+  expect(normalizeUserSummary(authResponse.user)).toMatchObject({
+    userId: 'usr_8b31a2',
+    email: 'user@example.com',
+    name: 'Nguyen Van A',
+  })
 })
 
 it('validates every seeded project and every video state in mock fixtures', () => {

@@ -228,6 +228,68 @@ describe('projects and videos', () => {
     await expect(api.createProject({ name: '   ', description: '' })).rejects.toMatchObject({ status: 422 })
     await expect(api.createProject({ name: 'x'.repeat(101), description: '' })).rejects.toMatchObject({ status: 422 })
   })
+
+  it('supports getMe, project detail/update/delete, API keys lifecycle, video delete, and paged video queries', async () => {
+    vi.stubEnv('VITE_MOCK_PROCESS', 'freeze')
+    server.resetHandlers(...createHandlers())
+
+    const me = await api.getMe()
+    expect(me).toMatchObject({ email: credentials.email, name: 'Demo user' })
+
+    const project = await api.createProject({ name: 'Managed project', description: 'Initial', webhookUrl: 'https://example.com/hook' })
+    expect(await api.getProject(project.projectId)).toMatchObject({
+      projectId: project.projectId,
+      name: 'Managed project',
+      webhookUrl: 'https://example.com/hook',
+    })
+
+    const updated = await api.updateProject(project.projectId, {
+      name: 'Renamed project',
+      description: 'Updated description',
+      webhookUrl: null,
+    })
+    expect(updated.name).toBe('Renamed project')
+    expect(updated.description).toBe('Updated description')
+    expect(updated.webhookUrl).toBeUndefined()
+
+    // API Keys lifecycle (up to 5 keys per project)
+    expect(await api.listApiKeys(project.projectId)).toEqual([])
+    const createdKeys = []
+    for (let i = 1; i <= 5; i += 1) {
+      const key = await api.createApiKey(project.projectId, { name: `Key ${i}` })
+      expect(key.rawKey).toMatch(/^tvc_live_[0-9a-f]{32}$/)
+      expect(key.keyPrefix).toMatch(/^tvc_live_[0-9a-f]{8}\.\.\.$/)
+      createdKeys.push(key)
+    }
+    await expect(api.createApiKey(project.projectId, { name: 'Key 6' })).rejects.toMatchObject({
+      status: 400,
+      code: 'INVALID_KEY',
+    })
+    expect(await api.listApiKeys(project.projectId)).toHaveLength(5)
+    await api.revokeApiKey(project.projectId, createdKeys[0].keyHash)
+    expect(await api.listApiKeys(project.projectId)).toHaveLength(4)
+
+    // Delete project guard when active video exists
+    await expect(api.deleteProject('demo-project')).rejects.toMatchObject({
+      status: 409,
+      code: 'RESOURCE_IN_USE',
+    })
+    await api.deleteProject(project.projectId)
+    await expect(api.getProject(project.projectId)).rejects.toMatchObject({ status: 404 })
+
+    // Paged video query and delete video guard when PROCESSING
+    const firstPage = await api.listVideosPage('demo-project', { limit: 2 })
+    expect(firstPage.items).toHaveLength(2)
+    expect(firstPage.hasMore).toBe(true)
+    expect(firstPage.nextCursor).toBeDefined()
+
+    await expect(api.deleteVideo('demo-processing')).rejects.toMatchObject({
+      status: 409,
+      code: 'RESOURCE_IN_USE',
+    })
+    await api.deleteVideo('demo-completed')
+    await expect(api.getVideo('demo-completed')).rejects.toMatchObject({ status: 404 })
+  })
 })
 
 describe('public embed reads', () => {

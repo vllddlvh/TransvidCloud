@@ -4,8 +4,13 @@ export type AuthResponse = components['schemas']['AuthResponse']
 export type RegisterRequest = components['schemas']['RegisterRequest']
 export type LoginRequest = components['schemas']['LoginRequest']
 export type CreateProjectRequest = components['schemas']['CreateProjectRequest']
+export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest']
 export type ProjectResponse = components['schemas']['ProjectResponse']
 export type ProjectList = components['schemas']['ProjectListResponse']
+export type CreateApiKeyRequest = components['schemas']['CreateApiKeyRequest']
+export type ApiKeyMetadataResponse = components['schemas']['ApiKeyMetadataResponse']
+export type ApiKeyCreatedResponse = components['schemas']['ApiKeyCreatedResponse']
+export type ApiKeyListResponse = components['schemas']['ApiKeyListResponse']
 export type InitVideoRequest = components['schemas']['InitVideoRequest']
 export type InitVideoResponse = components['schemas']['InitVideoResponse']
 export type VideoResponse = components['schemas']['VideoResponse']
@@ -13,14 +18,18 @@ export type VideoStatus = components['schemas']['VideoStatus']
 export type VideoList = components['schemas']['VideoPageResponse']
 export type ErrorResponse = components['schemas']['ErrorResponse'] | { error: { code: string; message: string } }
 
+export interface UserSummary {
+  userId: string
+  email: string
+  name: string
+  fullName?: string
+  createdAt?: string
+}
+
 export interface Session {
   accessToken: string
   expiresAt: string
-  user: {
-    userId: string
-    email: string
-    name: string
-  }
+  user: UserSummary
 }
 
 export interface Project {
@@ -28,9 +37,23 @@ export interface Project {
   ownerId?: string
   name: string
   description: string
+  webhookUrl?: string
+  status?: 'ACTIVE' | 'DELETED'
   videoCount: number
   createdAt: string
   updatedAt?: string
+}
+
+export interface ApiKey {
+  keyHash: string
+  projectId: string
+  name: string
+  keyPrefix: string
+  createdAt: string
+}
+
+export interface CreatedApiKey extends ApiKey {
+  rawKey: string
 }
 
 export interface Video {
@@ -38,12 +61,15 @@ export interface Video {
   projectId: string
   filename: string
   title?: string
+  inputKey?: string
   sizeBytes: number
   contentType: string
   status: VideoStatus
   attemptCount?: number
   createdAt: string
   updatedAt: string
+  startedAt?: string
+  completedAt?: string
   errorCode?: string
   durationSeconds?: number
   assets?: {
@@ -52,6 +78,12 @@ export interface Video {
     hls720?: string
     thumbnail?: string
   }
+}
+
+export interface VideoPage {
+  items: Video[]
+  nextCursor?: string
+  hasMore: boolean
 }
 
 export interface UploadTicket {
@@ -78,6 +110,24 @@ export function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value)
     && Number.isFinite(Date.parse(value))
 }
+
+export function normalizeUserSummary(value: unknown): UserSummary | null {
+  if (!isRecord(value) || !nonempty(value.userId)) return null
+  if (typeof value.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email)) return null
+  const name = nonempty(value.name)
+    ? value.name.trim()
+    : nonempty(value.fullName)
+      ? value.user?.toString() ? value.fullName.trim() : value.fullName.trim()
+      : value.email.split('@')[0]
+  return {
+    userId: value.userId,
+    email: value.email,
+    name,
+    ...(nonempty(value.fullName) ? { fullName: value.fullName.trim() } : {}),
+    ...(isIsoDate(value.createdAt) ? { createdAt: value.createdAt } : {}),
+  }
+}
+
 export function isSession(value: unknown): value is Session {
   return isRecord(value) && nonempty(value.accessToken) && !/[^\x21-\x7e]/.test(value.accessToken)
     && isIsoDate(value.expiresAt)
@@ -87,26 +137,21 @@ export function isSession(value: unknown): value is Session {
 export function normalizeSession(value: unknown): Session | null {
   if (isSession(value)) return value
   if (!isRecord(value) || !nonempty(value.accessToken) || /[^\x21-\x7e]/.test(value.accessToken)) return null
-  if (!isRecord(value.user) || !nonempty(value.user.userId)) return null
-  if (typeof value.user.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.user.email)) return null
+  const user = normalizeUserSummary(value.user)
+  if (!user) return null
   const expiresAt = isIsoDate(value.expiresAt)
     ? value.expiresAt
     : typeof value.expiresInSeconds === 'number' && Number.isFinite(value.expiresInSeconds) && value.expiresInSeconds > 0
       ? new Date(Date.now() + value.expiresInSeconds * 1000).toISOString()
       : null
   if (!expiresAt) return null
-  const name = nonempty(value.user.name)
-    ? value.user.name.trim()
-    : nonempty(value.user.fullName)
-      ? value.user.fullName.trim()
-      : value.user.email.split('@')[0]
   return {
     accessToken: value.accessToken,
     expiresAt,
     user: {
-      userId: value.user.userId,
-      email: value.user.email,
-      name,
+      userId: user.userId,
+      email: user.email,
+      name: user.name,
     },
   }
 }
@@ -133,14 +178,40 @@ export function normalizeProject(value: unknown): Project | null {
       ? 0
       : -1
   if (videoCount < 0) return null
+  const status = value.status === 'ACTIVE' || value.status === 'DELETED' ? value.status : undefined
   return {
     projectId: value.projectId,
     ...(nonempty(value.ownerId) ? { ownerId: value.ownerId } : {}),
     name: value.name,
     description,
+    ...(nonempty(value.webhookUrl) ? { webhookUrl: value.webhookUrl } : {}),
+    ...(status ? { status } : {}),
     videoCount,
     createdAt: value.createdAt,
     ...(isIsoDate(value.updatedAt) ? { updatedAt: value.updatedAt } : {}),
+  }
+}
+
+export function isApiKey(value: unknown): value is ApiKey {
+  return isRecord(value) && nonempty(value.keyHash) && nonempty(value.projectId)
+    && nonempty(value.name) && nonempty(value.keyPrefix) && isIsoDate(value.createdAt)
+}
+export function normalizeApiKey(value: unknown): ApiKey | null {
+  if (!isApiKey(value)) return null
+  return {
+    keyHash: value.keyHash,
+    projectId: value.projectId,
+    name: value.name,
+    keyPrefix: value.keyPrefix,
+    createdAt: value.createdAt,
+  }
+}
+export function normalizeCreatedApiKey(value: unknown): CreatedApiKey | null {
+  const base = normalizeApiKey(value)
+  if (!base || !isRecord(value) || !nonempty(value.rawKey)) return null
+  return {
+    ...base,
+    rawKey: value.rawKey,
   }
 }
 
@@ -207,12 +278,15 @@ export function normalizeVideo(value: unknown): Video | null {
     projectId: value.projectId,
     filename,
     ...(nonempty(value.title) ? { title: value.title } : {}),
+    ...(nonempty(value.inputKey) ? { inputKey: value.inputKey } : {}),
     sizeBytes: value.sizeBytes as number,
     contentType: value.contentType,
     status: value.status as VideoStatus,
     ...(typeof value.attemptCount === 'number' ? { attemptCount: value.attemptCount } : {}),
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
+    ...(isIsoDate(value.startedAt) ? { startedAt: value.startedAt } : {}),
+    ...(isIsoDate(value.completedAt) ? { completedAt: value.completedAt } : {}),
     ...(nonempty(value.errorCode) ? { errorCode: value.errorCode } : {}),
     ...(typeof value.durationSeconds === 'number' ? { durationSeconds: value.durationSeconds } : {}),
     ...(assets ? { assets } : {}),

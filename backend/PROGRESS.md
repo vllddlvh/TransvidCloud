@@ -4,49 +4,43 @@
 
 ## Cập nhật
 
-- Thời điểm: `2026-11-01T20:52:00+07:00`
+- Thời điểm: `2026-11-01T22:15:30+07:00`
 - Branch: `phuong-integration`
 
 ## Trạng thái tổng quan
 
-- Current focus: `Tích hợp toàn hệ thống (Backend – Worker – Frontend) trên LocalStack & Đóng gói bàn giao Cloud`
-- Feature MVP (F-001 -> F-009): `completed`
+- Current focus: `F-011 — Đồng bộ Đầy đủ Tính năng Frontend theo Đặc tả Backend (F-003 -> F-008)`
+- Feature MVP Backend (F-001 -> F-009): `completed`
+- Feature F-011 (Frontend Feature Parity 16/16 Backend Endpoints): `verified` ([`quality/evidence/F-011-frontend-feature-parity.md`](quality/evidence/F-011-frontend-feature-parity.md))
 - Full-Stack Integration (BE + FE + Worker + Nginx + LocalStack): `verified`
 - Tài liệu hướng dẫn Setup & Tự Test: [`../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md`](../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md)
 
-## Kết quả đạt được trong phiên Tích hợp (Full-Stack Integration)
+## Kết quả đạt được trong phiên (F-011 & Full-Stack Integration)
 
-1. **Dockerization & Hạ tầng Local (`docker-compose.yml`, `backend/Dockerfile`, `local/nginx/default.conf`):**
-   - Tạo `backend/Dockerfile` (multi-stage build `eclipse-temurin:21-jdk-alpine` -> `21-jre-alpine`, non-root user, healthcheck `/api/actuator/health`) và `backend/.dockerignore`.
-   - Khắc phục cấu hình `docker-compose.yml`, `.env.example`, `application.yml` và `OutboxPublisherService.java` để tương thích đồng thời biến môi trường `TVC_*` và `S3_*`/`SQS_*` (hỗ trợ cả Queue Name và Queue URL).
-   - Sửa lỗi phân giải `host.docker.internal` trong `local/nginx/default.conf` trên Linux.
-2. **Đồng bộ Backend ↔ Worker:**
-   - Cập nhật `VideoMapper.java` hỗ trợ đọc key `"hls"` (cùng `"masterPlaylistUrl"`, `"masterPlaylist"`) từ DynamoDB `assets` map do Worker ghi.
-   - Cập nhật `worker/internal/consumer/consumer.go` gửi kèm `AttributeNames: [All]` và fallback `Attempt = 1` để tương thích `ApproximateReceiveCount` trên LocalStack 3.0.
-3. **Đồng bộ Backend (SSOT `/contracts/openapi.yaml`) ↔ Frontend & E2E Script:**
-   - Đồng bộ `/docs/contracts/openapi.yaml` theo `/contracts/openapi.yaml` của Backend và tái sinh `frontend/src/api/schema.d.ts` (`npm run api:check` PASS).
-   - Cập nhật `frontend/src/api/types.ts` và `frontend/src/api/client.ts` chuẩn hóa đầy đủ wire format của Backend (`AuthResponse`, `ProjectResponse`, `InitVideoRequest`, `InitVideoResponse`, `VideoResponse`, `VideoAssets`, `ErrorResponse`).
-   - Bổ sung tính năng **Create account (Register)** trên giao diện `Login.tsx`, hỗ trợ `npm run dev:real`, và xử lý trang nhúng `/embed?video=...&project=...` không cần mở public auth trên Backend.
-   - Cập nhật `tests/e2e/run.sh` (chế độ `api` và `worker`) khớp 100% với contract Backend.
-4. **Tài liệu Hướng dẫn Setup & Tự Test:**
-   - Xuất bản tài liệu [`docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md`](../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md) hướng dẫn chi tiết cách dựng hệ thống, tự kiểm thử trên trình duyệt & CLI, và checklist bàn giao cho đội Cloud.
+1. **US1 — Bộ chọn chất lượng phát HLS (`Auto / 720p HD / 360p SD`) & Danh mục 4 `VideoAssets` (`F-008`):**
+   - Nâng cấp `frontend/src/player/HlsPlayer.tsx` bổ sung thanh **Playback quality** (`Auto (ABR)`, `720p HD`, `360p SD`) giữ nguyên thời điểm phát khi chuyển luồng.
+   - Nâng cấp `frontend/src/pages/VideoDetail.tsx` hiển thị đầy đủ cả 4 đường dẫn tài nguyên đầu ra (`Master HLS (ABR)`, `720p HD HLS`, `360p SD HLS`, `Thumbnail JPEG`) kèm nút `Copy` riêng cho từng đường dẫn và bảng siêu dữ liệu vòng đời xử lý (`Title`, `File name`, `Attempts`, `Added`, `Started`, `Completed`, `Updated`).
+2. **US2 — Quản lý Developer API Keys theo Project (`F-005`):**
+   - Xây dựng `frontend/src/components/ApiKeysModal.tsx` hỗ trợ liệt kê danh sách khóa (`x / 5 keys`), tạo khóa mới (`POST /api/projects/{projectId}/api-keys`) hiển thị `rawKey` duy nhất 1 lần kèm nút Copy, và thu hồi khóa (`DELETE /api/projects/{projectId}/api-keys/{keyHash}`).
+3. **US3 — Quản trị Vòng đời Project (`F-004`):**
+   - Cập nhật `frontend/src/pages/Projects.tsx` và `frontend/src/pages/Videos.tsx` hỗ trợ xem chi tiết Project (`GET /api/projects/{projectId}`), chỉnh sửa `name`/`description`/`webhookUrl` (`PATCH /api/projects/{projectId}`) và xóa mềm Project (`DELETE /api/projects/{projectId}`).
+4. **US4 — Nhập Tiêu đề Video (`title`), Xóa Video & Phân trang Cursor (`F-006`, `F-008`):**
+   - Cập nhật `frontend/src/components/UploadDialog.tsx` bổ sung ô `Video title` (1–200 ký tự, tự động gợi ý từ tên file).
+   - Bổ sung nút **Delete video** (`DELETE /api/videos/{videoId}`, khóa khi `status === 'PROCESSING'`) tại `VideoDetail.tsx` và hỗ trợ `Load more videos` (`listVideosPage`) tại `Videos.tsx`.
 
 ## Blocker / Quyết định cần con người
 
-- Không có blocker. Toàn bộ 7 cổng kiểm định (Quality Gates) đã PASS 100%.
+- Không có blocker. Toàn bộ 25/25 tasks của `F-011` và các cổng kiểm định đã PASS 100%.
 
 ## Verification gần nhất
 
 | Lệnh | Kết quả | Thời điểm | Evidence |
 |---|---|---|---|
-| `make up` & `make smoke` | `PASS` (4 containers healthy/running, 9/9 smoke checks OK) | `2026-11-01T20:34:47+07:00` | `http://localhost:8080/api/actuator/health` & `:8000` -> `UP` |
-| `make e2e` (`bash ./tests/e2e/run.sh api`) | `PASS` (Register -> Project -> S3 PUT -> Confirm -> Worker -> HLS 360p/720p & Thumbnail) | `2026-11-01T20:36:00+07:00` | Hoàn tất E2E API A4 trong 4s |
-| `make e2e-worker` (`bash ./tests/e2e/run.sh worker`) | `PASS` (Worker FFmpeg HLS + Thumbnail + DDB + SQS ACK) | `2026-11-01T20:38:49+07:00` | Worker integration E2E đạt 100% |
-| `E2E_REAL_STACK=1 E2E_BASE_URL=http://localhost:8000 npx playwright test e2e/real-stack.spec.ts` | `PASS` (1 passed in 8.6s trên Chrome thật) | `2026-11-01T20:48:03+07:00` | UI Register -> Project -> Upload -> HLS Playback -> Embed -> `FAILED_VALIDATION` |
-| `cd frontend && npm run api:check && npm test && npm run build` | `PASS` (13 test files, 136 tests pass, production bundle OK) | `2026-11-01T20:29:57+07:00` | Frontend unit/contract tests & build PASS |
-| `cd worker && go test ./...` | `PASS` (10/10 Go packages pass) | `2026-11-01T20:39:50+07:00` | Worker unit tests PASS |
-| `cd backend && ./scripts/verify.sh` (`./mvnw -B clean verify`) | `PASS` (100% unit tests + 24 Testcontainers IT pass) | `2026-11-01T20:51:10+07:00` | Zero Regression trên Backend |
+| `cd frontend && npm run api:check && npm test && npm run build` | `PASS` (13 test files, 142 tests pass, production bundle OK) | `2026-11-01T22:10:53+07:00` | [`quality/evidence/F-011-frontend-feature-parity.md`](quality/evidence/F-011-frontend-feature-parity.md) |
+| `E2E_REAL_STACK=1 E2E_BASE_URL=http://localhost:8000 npx playwright test e2e/real-stack.spec.ts` | `PASS` (1 passed in 14.2s trên Chromium thật + Full Stack) | `2026-11-01T22:14:48+07:00` | Register -> Edit Project -> API Keys -> Upload + Title -> HLS 720p/360p/Auto & 4 Assets -> Embed -> `FAILED_VALIDATION` -> Delete Video |
+| `make e2e` & `make e2e-worker` | `PASS` | `2026-11-01T20:38:49+07:00` | Full API & Worker E2E trên LocalStack |
+| `cd backend && ./scripts/verify.sh` | `PASS` (100% unit tests + 24 Testcontainers IT pass) | `2026-11-01T20:51:10+07:00` | Zero Regression trên Backend |
 
 ## Hành động tiếp theo
 
-- Người dùng trải nghiệm/tự test theo hướng dẫn tại `docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md` và bàn giao cho đội Cloud.
+- Người dùng trải nghiệm các tính năng mới trên giao diện theo hướng dẫn tại [`docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md`](../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md).

@@ -82,46 +82,129 @@ npm run dev:real
 
 ## 4. Hướng dẫn Tự Test trên Trình duyệt (Manual UI Testing)
 
-### Kịch bản 1: Đăng ký tài khoản & Đăng nhập (SaaS Auth)
+Toàn bộ 16 endpoints Backend hiện đã được tích hợp đồng bộ trên giao diện Frontend. Bạn có thể lần lượt thực hiện 7 kịch bản sau để kiểm thử trọn vẹn các tính năng mới:
+
+### Kịch bản 1: Đăng ký tài khoản, Đăng nhập & Tạo Project mới (kèm Webhook)
 1. Mở trình duyệt truy cập: **`http://localhost:8000/login`**
-2. Ở khung bên phải, bấm vào liên kết **"Create account"** (bên dưới nút Sign in).
-3. Nhập thông tin bất kỳ, ví dụ:
+2. Bấm vào liên kết **"Create account"** (phía dưới nút Sign in).
+3. Nhập thông tin:
    - **Full name:** `Phuong Tester`
    - **Email address:** `demo@transvidcloud.test`
    - **Password:** `DemoPass123!` (tối thiểu 8 ký tự)
 4. Bấm **"Create account"**.
-5. **Kết quả:** Hệ thống tạo user trên bảng DynamoDB `tvc-local-users`, cấp JWT token và tự động chuyển hướng vào trang **Projects** (`/projects`), góc phải trên hiển thị tên `Phuong Tester`.
+   - **Kết quả:** Hệ thống tạo user trên DynamoDB `tvc-local-users`, cấp JWT token và chuyển hướng tới trang **Projects** (`/projects`), góc trên bên phải hiển thị tên `Phuong Tester`.
+5. Bấm nút **"Create project"**:
+   - **Project name:** `Demo Cloud Video` (tối đa 120 ký tự)
+   - **Description:** `Dự án video thử nghiệm chất lượng cao` (tối đa 500 ký tự)
+   - **Webhook URL (tùy chọn):** `https://hooks.transvid.example/events`
+   - Bấm **"Create project"**.
+   - **Kết quả:** Card `Demo Cloud Video` xuất hiện trong danh sách, có huy hiệu `Webhook` màu xanh. Bấm vào card để mở trang video của Project.
 
-### Kịch bản 2: Tạo Project mới
-1. Tại trang **Projects**, bấm nút **"Create project"**.
-2. Nhập:
-   - **Project name:** `Demo Cloud Video`
-   - **Description:** `Kiểm thử tích hợp BE - FE - Worker`
-3. Bấm **"Create project"**.
-4. **Kết quả:** Card project `Demo Cloud Video` xuất hiện ngay trong danh sách. Bấm vào card này để mở trang danh sách video của Project.
+---
 
-### Kịch bản 3: Upload Video thật -> Transcode HLS -> Xem Video & Embed
+### Kịch bản 2: Chỉnh sửa Project & Quản lý Developer API Keys (F-004 & F-005)
+1. **Chỉnh sửa thông tin Project (`Edit project`):**
+   - Trên thanh công cụ góc trên bên phải, bấm nút **"Edit project"**.
+   - Sửa mô tả thành: `Dự án video thử nghiệm tích hợp Multi-Rendition HLS`.
+   - Cập nhật Webhook URL thành: `https://hooks.transvid.example/v2`.
+   - Bấm **"Save changes"**.
+   - **Kết quả:** Thông báo *“Project updated”* xuất hiện; tên, mô tả và webhook URL cập nhật tức thì (`PATCH /api/projects/{projectId}`).
+2. **Quản lý Developer API Keys (`API keys`):**
+   - Bấm nút **"API keys"** trên thanh công cụ.
+   - Hộp thoại hiển thị thông tin giới hạn: **`(0 / 5 keys)`**.
+   - Nhập tên khóa: `CI/CD Automation Key` (1–100 ký tự) rồi bấm **"Create API key"**.
+   - **Quan sát Banner Cảnh báo Một Lần Duy Nhất:**
+     - Hộp thoại xuất hiện khung nổi bật: *“Copy your API key now — it will only be shown once”*.
+     - Chuỗi khóa thô `rawKey` hiển thị đầy đủ dưới dạng: `tvc_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`.
+     - Bấm nút **"Copy API key"** để sao chép vào clipboard.
+     - Bấm nút **"Done"**.
+   - **Kiểm tra Danh sách Khóa:**
+     - Lúc này danh sách hiển thị tên `CI/CD Automation Key`, nhưng chuỗi khóa chỉ còn hiển thị tiền tố đã được che: `tvc_live_xxxxxxxx...` (đảm bảo an toàn không lộ secret key) và số lượng khóa là `(1 / 5 keys)`.
+3. **Thử nghiệm gọi API Backend trực tiếp bằng `X-API-Key` qua Terminal (Dual Security):**
+   - Mở terminal và chạy lệnh sau (thay `tvc_live_...` bằng chuỗi bạn vừa copy và `{projectId}` từ thanh địa chỉ trình duyệt):
+     ```bash
+     curl -s -H "X-API-Key: <CHUÕI_RAW_KEY_VUA_COPY>" http://localhost:8000/api/projects/<PROJECT_ID>/videos
+     ```
+   - **Kết quả:** Backend xác thực thành công qua header `X-API-Key` và trả về JSON danh sách video `{"items":[],"nextCursor":null,"hasMore":false}` với mã HTTP `200 OK`.
+4. **Thu hồi API Key (`Revoke`):**
+   - Trên hộp thoại **Developer API keys**, bấm nút **"Revoke"** màu đỏ bên cạnh khóa.
+   - Khóa bị thu hồi tức thì và bộ đếm trở về `(0 / 5 keys)`. Bấm **"Close"** để đóng hộp thoại.
+
+---
+
+### Kịch bản 3: Upload Video với Tiêu đề Tùy chỉnh (`title`) & Theo dõi Tiến trình
 1. Trong trang chi tiết Project, bấm nút **"Upload video"**.
-2. Chọn một file video `.mp4` (bạn có thể chọn sẵn file mẫu của dự án tại đường dẫn: `worker/testdata/sample-10s-720p.mp4` — dung lượng ~1.5 MB, thời lượng 10 giây).
-3. Bấm **"Start upload"**.
-4. **Quan sát tiến trình:**
-   - Hộp thoại nhảy qua 3 bước: *1. Prepare upload* (`POST /api/projects/{id}/videos`) -> *2. Upload file* (`PUT` trực tiếp lên S3 LocalStack `:4566`) -> *3. Confirm video* (`POST /api/videos/{id}/confirm`).
-   - Sau khi hộp thoại đóng lại, video xuất hiện trong danh sách với trạng thái **`Pending`** -> chuyển sang **`Processing`** -> và sau khoảng **2–4 giây** tự động chuyển sang **`Completed`** kèm ảnh thu nhỏ (Thumbnail)!
-5. **Xem Video HLS (`hls.js`):**
-   - Bấm vào dòng video vừa `Completed` để mở trang **Video details**.
-   - Trình phát video phát mượt mà luồng HLS (`/media/{projectId}/{videoId}/hls/master.m3u8` với 2 chất lượng `360p` và `720p`).
-6. **Kiểm tra tính năng Chia sẻ / Nhúng (`Copy embed code`):**
-   - Bấm nút **"Copy embed code"**.
-   - Mở một cửa sổ ẩn danh (Incognito — chưa đăng nhập) và dán URL trong `src="..."` của thẻ `<iframe>` (dạng `http://localhost:8000/embed?video=vid_...&project=prj_...`).
-   - **Kết quả:** Trang `/embed` phát được video HLS ngay cả khi người xem không đăng nhập.
+2. Chọn file video mẫu: `worker/testdata/sample-10s-720p.mp4`.
+3. **Quan sát trường `Video title`:**
+   - Hệ thống tự động điền gợi ý `sample-10s-720p.mp4`.
+   - Bạn có thể chỉnh sửa thành tiêu đề thân thiện: **`Giới thiệu TransvidCloud 2026`** (1–200 ký tự).
+4. Bấm **"Start upload"**:
+   - Trình duyệt khởi tạo upload (`POST /api/projects/{id}/videos` gửi kèm `title`) -> upload trực tiếp lên S3 LocalStack `:4566` qua Presigned PUT URL -> xác nhận hoàn tất (`POST /api/videos/{id}/confirm`).
+   - Hộp thoại đóng lại và video xuất hiện với tiêu đề **`Giới thiệu TransvidCloud 2026`**.
+5. **Theo dõi vòng đời xử lý tự động (Auto-refresh):**
+   - Trạng thái tự động nhảy từ **`Pending`** $\rightarrow$ **`Processing`** $\rightarrow$ **`Completed`** (trong vòng 2–4 giây) kèm ảnh đại diện Thumbnail vừa được Go FFmpeg Worker tạo ra.
 
-### Kịch bản 4: Kiểm thử Luồng Lỗi (Negative Test)
-1. **Upload file quá 200 MB hoặc sai đuôi định dạng (`.exe`, `.txt`):**
-   - Hộp thoại Upload chặn ngay trên UI và hiển thị cảnh báo đỏ, nút *Start upload* bị khóa.
-2. **Upload file giả mạo video (ví dụ đổi tên một file text bất kỳ thành `fake.mp4`):**
-   - Tạo nhanh 1 file lỗi: `echo "not a video" > /tmp/fake.mp4` rồi chọn upload file `/tmp/fake.mp4`.
-   - File vẫn upload lên S3 và Confirm thành công, nhưng khi Worker tải về chạy `ffprobe` sẽ phát hiện không phải container video hợp lệ -> cập nhật trạng thái thành **`Validation failed`** (`FAILED_VALIDATION`).
-   - Bấm vào video sẽ thấy thông báo: **`Processing failed — Error code: NOT_A_VIDEO`**.
+---
+
+### Kịch bản 4: Trải nghiệm Trình phát HLS Đa Chất lượng (`Auto / 720p / 360p`) & 4 Transcoded Assets
+1. Bấm vào video **`Giới thiệu TransvidCloud 2026`** để mở trang **Video details**.
+2. **Kiểm tra Trình phát HLS (`HlsPlayer`):**
+   - Video tự động nạp và phát luồng HLS Adaptive Bitrate.
+   - Ngay dưới khung video xuất hiện thanh điều khiển **Playback quality**:
+     - **`Auto (ABR)`** *(mặc định)*: Trình phát dùng thuật toán ABR của `hls.js` tự động cân bằng theo băng thông mạng (`master.m3u8`).
+     - Bấm chọn **`720p HD`**: Trình phát chuyển ngay sang luồng `/hls/720p/index.m3u8`, hiển thị nút active, và **giữ nguyên thời gian video đang phát dở**.
+     - Bấm chọn **`360p SD`**: Trình phát chuyển sang luồng `/hls/360p/index.m3u8` mượt mà không bị reload trang.
+     - Bấm lại **`Auto (ABR)`**: Trình phát quay lại luồng Master ABR.
+3. **Kiểm tra Danh mục 4 Video Assets & Siêu dữ liệu Vòng đời:**
+   - Ở cột bên phải (**Transcoded assets**), hệ thống liệt kê đầy đủ 4 tài nguyên do Worker sinh ra kèm nút **Copy** riêng lẻ:
+     - **Master HLS (ABR):** `/media/{projectId}/{videoId}/hls/master.m3u8`
+     - **720p HD HLS:** `/media/{projectId}/{videoId}/hls/720p/index.m3u8`
+     - **360p SD HLS:** `/media/{projectId}/{videoId}/hls/360p/index.m3u8`
+     - **Thumbnail JPEG:** `/media/{projectId}/{videoId}/thumb/default.jpg`
+   - Bấm nút **Copy** bên cạnh bất kỳ asset nào để kiểm tra thông báo sao chép thành công.
+   - Kiểm tra bảng **File information**: hiển thị đầy đủ `Title`, `File name`, `Size`, `Format`, `Attempts (1)`, `Added`, `Started`, `Completed`, `Updated` và `Video ID`.
+
+---
+
+### Kịch bản 5: Chia sẻ & Nhúng Video Public (`/embed`)
+1. Tại trang **Video details**, bấm nút **"Copy embed code"**.
+2. Mở một **cửa sổ ẩn danh mới (Incognito Window)** hoặc một trình duyệt khác (hoàn toàn chưa đăng nhập).
+3. Lấy đường dẫn URL nằm trong thuộc tính `src="..."` của đoạn mã iframe vừa copy (dạng `http://localhost:8000/embed?video=vid_...&project=prj_...`) và dán vào thanh địa chỉ.
+4. **Kết quả:**
+   - Trang `/embed` công khai hiển thị trình phát HLS với đầy đủ video và phát mượt mà mà không bắt người xem phải đăng nhập tài khoản.
+
+---
+
+### Kịch bản 6: Kiểm thử Luồng Lỗi (Negative Tests) & Bảo vệ Xóa (Conflict Guards)
+1. **Kiểm tra chặn upload file quá dung lượng (Client validation):**
+   - Mở lại hộp thoại Upload, thử chọn một file > 200 MB hoặc file `.exe`.
+   - Giao diện báo lỗi đỏ ngay tại chỗ và nút *Start upload* bị vô hiệu hóa.
+2. **Kiểm tra Worker bắt lỗi file giả mạo (`FAILED_VALIDATION`):**
+   - Tạo nhanh một file giả mạo: `echo "invalid content" > /tmp/fake-video.mp4`.
+   - Chọn upload file `/tmp/fake-video.mp4`.
+   - File vẫn được tải lên S3 và xác nhận, nhưng sau 2 giây Worker dùng `ffprobe` quét thấy không phải video hợp lệ $\rightarrow$ cập nhật trạng thái **`Validation failed`**.
+   - Bấm vào video xem chi tiết: Giao diện hiển thị cảnh báo đỏ **`Processing failed — Error code: NOT_A_VIDEO`** kèm hướng dẫn khắc phục.
+3. **Kiểm tra Xóa Video (`Delete video`):**
+   - Tại trang chi tiết video lỗi vừa tạo, bấm nút **"Delete video"** trên thanh tiêu đề.
+   - Hộp thoại xác nhận mở ra, bấm **"Confirm delete"**.
+   - Video bị xóa ngay lập tức (`DELETE /api/videos/{videoId}`) và trình duyệt tự động quay về trang danh sách video của Project.
+   - *(Lưu ý: Nếu một video đang ở trạng thái `Processing`, nút "Delete video" sẽ tự động bị mờ/khóa kèm tooltip giải thích quy tắc bảo vệ của hệ thống, không cho phép xóa video đang transcode dở).*
+4. **Kiểm tra Bảo vệ Xóa Project (`Delete project` - Conflict Guard 409):**
+   - Tại trang danh sách video của Project, bấm nút **"Delete project"**.
+   - Bấm **"Confirm delete project"**.
+   - Do Project đã có video hoàn tất hoặc video đang xử lý, nếu còn ràng buộc chưa cho phép xóa hoặc xóa thành công, hệ thống sẽ phản hồi đúng chuẩn:
+     - Nếu còn video đang `PROCESSING`: Backend trả `409 RESOURCE_IN_USE` và modal hiển thị cảnh báo đỏ ngăn chặn xóa.
+     - Nếu các video đã dọn dẹp xong: Project được xóa mềm an toàn (`DELETE /api/projects/{projectId}`) và điều hướng về trang `/projects`.
+
+---
+
+### Kịch bản 7: Kiểm thử Phân trang Con trỏ (Cursor Pagination & Load More)
+1. Trong một Project có nhiều hơn 20 video (hoặc khi gọi API `GET /api/projects/{projectId}/videos?limit=5`):
+2. Backend trả về trường `hasMore: true` kèm mã con trỏ mã hóa Base64URL `nextCursor`.
+3. Dưới danh sách video xuất hiện nút **"Load more videos"**.
+4. Bấm **"Load more videos"**:
+   - Frontend gửi yêu cầu `api.listVideosPage(id, { cursor: nextCursor })`.
+   - Các video của trang tiếp theo được nối tiếp vào danh sách mượt mà mà không làm mất các video đã tải trước đó.
 
 ---
 
@@ -142,19 +225,43 @@ make e2e-worker
 ```
 
 ### 5.3. Kiểm thử E2E Giao diện Trình duyệt Thật (Playwright + Chrome + Full Stack)
-Khi `make up` và `npm run dev:real` đang chạy:
+Kịch bản `frontend/e2e/real-stack.spec.ts` tự động hóa 100% các thao tác người dùng trên trình duyệt thật kết nối trực tiếp với toàn bộ hạ tầng Docker Compose + LocalStack:
+- Đăng ký tài khoản mới (`/login` -> Register).
+- Tạo Project và chỉnh sửa cấu hình Project (`PATCH /api/projects/:id`).
+- Tạo Developer API Key, kiểm tra banner hiển thị `rawKey` một lần duy nhất, che `keyPrefix`, và thu hồi (`Revoke`).
+- Upload video kèm tiêu đề tùy chỉnh `title` qua S3 Presigned PUT.
+- Chờ Worker chuyển mã thành công sang trạng thái `COMPLETED`.
+- Mở xem video, chuyển đổi giữa các độ phân giải `Auto (ABR)`, `720p HD`, `360p SD` và kiểm tra 4 đường dẫn assets.
+- Mở xem trang nhúng `/embed` ở ngữ cảnh không đăng nhập.
+- Upload file lỗi để kiểm tra Worker bắt mã lỗi `NOT_A_VIDEO`.
+- Xóa video lỗi qua nút `Delete video`.
+
+Cách chạy:
 ```bash
+# Đảm bảo Docker Compose đang chạy (make up) và Vite đang chạy (npm run dev:real)
 cd frontend
 E2E_REAL_STACK=1 E2E_BASE_URL=http://localhost:8000 npx playwright test e2e/real-stack.spec.ts
 ```
-*(Nếu muốn xem trình duyệt Chrome mở lên thao tác trực tiếp, thêm cờ `--headed` vào cuối lệnh).*
+*(Thêm cờ `--headed` vào cuối lệnh nếu bạn muốn xem trình duyệt Chrome mở lên và tự động click chuột).*
 
 ### 5.4. Chạy toàn bộ Unit & Integration Tests của cả 3 thành phần
 ```bash
-# 1. Backend (Unit Tests + 24 Testcontainers LocalStack Integration Tests):
-cd backend && ./scripts/verify.sh
+# 1. Frontend (Kiểm tra OpenAPI schema drift, 142 Unit/Contract/Integration tests & Production build):
+cd frontend
+npm run api:check
+npm test
+npm run build
 
-# 2. Worker + Frontend + Backend (chạy nhanh qua Makefile ở thư mục gốc):
+# 2. Backend (100% Unit Tests + 24 Testcontainers LocalStack Integration Tests):
+cd ../backend
+./scripts/verify.sh
+
+# 3. Worker (10/10 Go packages):
+cd ../worker
+go test ./...
+
+# Hoặc chạy kiểm thử nhanh toàn bộ dự án từ thư mục gốc qua Makefile:
+cd ..
 make test
 ```
 
