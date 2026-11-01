@@ -4,52 +4,43 @@
 
 ## Cập nhật
 
-- Thời điểm: `2026-11-01T18:25:00+07:00`
-- Branch: `phuong-backend`
+- Thời điểm: `2026-11-01T22:15:30+07:00`
+- Branch: `phuong-integration`
 
 ## Trạng thái tổng quan
 
-- Current focus: `F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract (Epic A5/A8/C5)` (Hoàn tất & Đóng feature)
-- Feature spec F-009: [`specs/009-observability-integration-tests/spec.md`](specs/009-observability-integration-tests/spec.md)
-- Checklist F-009: [`specs/009-observability-integration-tests/checklists/requirements.md`](specs/009-observability-integration-tests/checklists/requirements.md)
-- Feature vừa hoàn thành: `F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract` (completed)
-- Evidence F-009: [`quality/evidence/F-009-observability-integration-tests.md`](quality/evidence/F-009-observability-integration-tests.md)
-- Status: `completed`
+- Current focus: `F-011 — Đồng bộ Đầy đủ Tính năng Frontend theo Đặc tả Backend (F-003 -> F-008)`
+- Feature MVP Backend (F-001 -> F-009): `completed`
+- Feature F-011 (Frontend Feature Parity 16/16 Backend Endpoints): `verified` ([`quality/evidence/F-011-frontend-feature-parity.md`](quality/evidence/F-011-frontend-feature-parity.md))
+- Full-Stack Integration (BE + FE + Worker + Nginx + LocalStack): `verified`
+- Tài liệu hướng dẫn Setup & Tự Test: [`../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md`](../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md)
 
-## Kết quả đạt được của F-009
+## Kết quả đạt được trong phiên (F-011 & Full-Stack Integration)
 
-1. **Structured Logging & Correlation Tracking (US1)**:
-   - Triển khai `LogContext` và `CorrelationIdFilter` (`Ordered.HIGHEST_PRECEDENCE`) tự động tiếp nhận hoặc tạo mới `X-Correlation-ID` (hoặc fallback `X-Request-ID`), làm sạch ký tự bẩn, gán vào Logback MDC và trả về trong HTTP response header.
-   - Làm giàu ngữ cảnh nghiệp vụ (`userId`, `projectId`, `videoId`) xuyên suốt `VideoService`, `ProjectService`, `ApiKeyService` và `GlobalExceptionHandler`.
-   - `OutboxRelayScheduler` tự sinh correlation ID dạng `sched-outbox-...` cho các tác vụ nền không có HTTP request.
-2. **Log Masking & Security (US2)**:
-   - Cơ chế phòng thủ theo chiều sâu (Defense-in-Depth): Loại trừ trường nhạy cảm trong DTO `toString()` (`RegisterRequest`, `LoginRequest`, `ApiKeyCreatedResponse`, `@ToString(exclude = "passwordHash")` trên `UserItem`).
-   - Xây dựng `MaskingMessageConverter` và `StructuredLoggingLayout` kết hợp `logback-spring.xml` tự động quét regex và che giấu `password`, `rawApiKey`, `Bearer token`, `aws_secret_access_key` thành `[PROTECTED]`, và loại bỏ toàn bộ query string chứa chữ ký S3 Presigned URL (`X-Amz-Signature`).
-   - Hỗ trợ biến môi trường `LOG_FORMAT=text` (màu có cấu trúc) hoặc `LOG_FORMAT=json` (single-line JSON).
-3. **Full-Lifecycle Integration & Contract Tests (US3)**:
-   - Xây dựng `ObservabilityLoggingIT` kiểm chứng trích xuất header correlation, MDC enrichment, và log masking an toàn.
-   - Xây dựng `VideoFullLifecycleIT` chạy trên môi trường đám mây giả lập Testcontainers LocalStack (DynamoDB, S3, SQS): kiểm chứng chuỗi trọn vẹn Auth -> Project -> API Key -> Upload Init -> S3 Upload -> Confirm -> SQS Dispatch -> Worker Emulation -> Query Detail/List.
-   - Thẩm định 100% tính tương thích của message SQS nhận được với hợp đồng `docs/contracts/sqs-job-message.schema.json` v1 (`jobId`, `videoId`, `projectId`, `inputKey`, `requestedAt`, `schemaVersion = 1`).
-   - Thẩm định Multi-tenancy Isolation (Tenant B cố tình dùng JWT hoặc API Key truy cập tài nguyên Tenant A đều bị chặn đứng với 403 `ACCESS_DENIED`).
-   - Thẩm định xung đột trạng thái: Chặn xóa video khi `PROCESSING` với 409 `INVALID_STATE_TRANSITION`, cho phép Fast Delete khi `COMPLETED` với 204 No Content.
-
-## Việc còn lại
-
-- Chuẩn bị kế hoạch và kích hoạt Feature tiếp theo theo roadmap: `F-010: Thông báo Webhook khi hoàn tất xử lý Video (Epic A7 — P1)`.
+1. **US1 — Bộ chọn chất lượng phát HLS (`Auto / 720p HD / 360p SD`) & Danh mục 4 `VideoAssets` (`F-008`):**
+   - Nâng cấp `frontend/src/player/HlsPlayer.tsx` bổ sung thanh **Playback quality** (`Auto (ABR)`, `720p HD`, `360p SD`) giữ nguyên thời điểm phát khi chuyển luồng.
+   - Nâng cấp `frontend/src/pages/VideoDetail.tsx` hiển thị đầy đủ cả 4 đường dẫn tài nguyên đầu ra (`Master HLS (ABR)`, `720p HD HLS`, `360p SD HLS`, `Thumbnail JPEG`) kèm nút `Copy` riêng cho từng đường dẫn và bảng siêu dữ liệu vòng đời xử lý (`Title`, `File name`, `Attempts`, `Added`, `Started`, `Completed`, `Updated`).
+2. **US2 — Quản lý Developer API Keys theo Project (`F-005`):**
+   - Xây dựng `frontend/src/components/ApiKeysModal.tsx` hỗ trợ liệt kê danh sách khóa (`x / 5 keys`), tạo khóa mới (`POST /api/projects/{projectId}/api-keys`) hiển thị `rawKey` duy nhất 1 lần kèm nút Copy, và thu hồi khóa (`DELETE /api/projects/{projectId}/api-keys/{keyHash}`).
+3. **US3 — Quản trị Vòng đời Project (`F-004`):**
+   - Cập nhật `frontend/src/pages/Projects.tsx` và `frontend/src/pages/Videos.tsx` hỗ trợ xem chi tiết Project (`GET /api/projects/{projectId}`), chỉnh sửa `name`/`description`/`webhookUrl` (`PATCH /api/projects/{projectId}`) và xóa mềm Project (`DELETE /api/projects/{projectId}`).
+4. **US4 — Nhập Tiêu đề Video (`title`), Xóa Video & Phân trang Cursor (`F-006`, `F-008`):**
+   - Cập nhật `frontend/src/components/UploadDialog.tsx` bổ sung ô `Video title` (1–200 ký tự, tự động gợi ý từ tên file).
+   - Bổ sung nút **Delete video** (`DELETE /api/videos/{videoId}`, khóa khi `status === 'PROCESSING'`) tại `VideoDetail.tsx` và hỗ trợ `Load more videos` (`listVideosPage`) tại `Videos.tsx`.
 
 ## Blocker / Quyết định cần con người
 
-- Không có blocker. Tất cả các tính năng P0 của dự án (từ F-001 đến F-009) đã hoàn thành, kiểm chứng và đóng thành công.
+- Không có blocker. Toàn bộ 25/25 tasks của `F-011` và các cổng kiểm định đã PASS 100%.
 
 ## Verification gần nhất
 
 | Lệnh | Kết quả | Thời điểm | Evidence |
 |---|---|---|---|
-| `./mvnw -B test -Dtest=ObservabilityLoggingIT,VideoFullLifecycleIT` | `PASS` (6/6 tests pass, 0 failures, 0 errors) | `2026-11-01T18:18:56+07:00` | Kiểm thử tích hợp Testcontainers LocalStack đạt 100% |
-| `./scripts/verify.sh` (`./mvnw -B clean verify`) | `PASS` (100% test suite pass, 24 IT tests, 100+ unit tests, 0 failures) | `2026-11-01T18:22:19+07:00` | Đạt Zero Regression tuyệt đối trên toàn bộ dự án |
-| `./scripts/check-setup.sh` | `PASS` (10/10 checks passed) | `2026-11-01T18:20:00+07:00` | Harness structure check hoàn chỉnh |
+| `cd frontend && npm run api:check && npm test && npm run build` | `PASS` (13 test files, 142 tests pass, production bundle OK) | `2026-11-01T22:10:53+07:00` | [`quality/evidence/F-011-frontend-feature-parity.md`](quality/evidence/F-011-frontend-feature-parity.md) |
+| `E2E_REAL_STACK=1 E2E_BASE_URL=http://localhost:8000 npx playwright test e2e/real-stack.spec.ts` | `PASS` (1 passed in 14.2s trên Chromium thật + Full Stack) | `2026-11-01T22:14:48+07:00` | Register -> Edit Project -> API Keys -> Upload + Title -> HLS 720p/360p/Auto & 4 Assets -> Embed -> `FAILED_VALIDATION` -> Delete Video |
+| `make e2e` & `make e2e-worker` | `PASS` | `2026-11-01T20:38:49+07:00` | Full API & Worker E2E trên LocalStack |
+| `cd backend && ./scripts/verify.sh` | `PASS` (100% unit tests + 24 Testcontainers IT pass) | `2026-11-01T20:51:10+07:00` | Zero Regression trên Backend |
 
 ## Hành động tiếp theo
 
-- Bàn giao session sạch (Clean Handoff) cho Feature F-009.
-- Chuyển sang Feature F-010 khi người dùng yêu cầu.
+- Người dùng trải nghiệm các tính năng mới trên giao diện theo hướng dẫn tại [`docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md`](../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md).

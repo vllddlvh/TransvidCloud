@@ -14,27 +14,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Đăng ký
-         * @description DRAFT placeholder outside frontend Week1; request and response shape not approved.
+         * Đăng ký tài khoản SaaS mới
+         * @description Tạo tài khoản mới với email duy nhất (đảm bảo bằng DynamoDB `TransactWriteItems`) và trả về JWT.
          */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Created; body intentionally unspecified */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        post: operations["registerUser"];
         delete?: never;
         options?: never;
         head?: never;
@@ -50,8 +33,28 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Đăng nhập (JWT) */
-        post: operations["login"];
+        /** Đăng nhập và nhận JWT */
+        post: operations["loginUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lấy thông tin tài khoản của phiên đăng nhập hiện tại
+         * @description Trích xuất thông tin người dùng từ JWT Access Token trong header Authorization Bearer.
+         */
+        get: operations["getCurrentUser"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -65,10 +68,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liệt kê project của user */
+        /** Liệt kê danh sách Project của người dùng hiện tại */
         get: operations["listProjects"];
         put?: never;
-        /** Tạo project */
+        /** Tạo Project mới */
         post: operations["createProject"];
         delete?: never;
         options?: never;
@@ -76,42 +79,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+            };
+            cookie?: never;
+        };
+        /** Xem chi tiết một Project */
+        get: operations["getProject"];
+        put?: never;
+        post?: never;
+        /**
+         * Xóa Project
+         * @description Xóa Project thuộc quyền sở hữu của user (từ chối nếu còn video đang xử lý).
+         */
+        delete: operations["deleteProject"];
+        options?: never;
+        head?: never;
+        /** Cập nhật thông tin hoặc cấu hình Webhook của Project */
+        patch: operations["updateProject"];
+        trace?: never;
+    };
     "/projects/{projectId}/api-keys": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                projectId: components["parameters"]["ProjectId"];
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Liệt kê các API Key của Project
+         * @description Chỉ trả về metadata và `keyHash` (không bao giờ trả lại `rawKey` sau khi tạo).
+         */
+        get: operations["listApiKeys"];
+        put?: never;
+        /**
+         * Tạo API Key mới cho Project
+         * @description Sinh API Key mới, chỉ lưu bản băm SHA-256 (`keyHash`) vào DynamoDB và trả về `rawKey` duy nhất một lần trong response này.
+         */
+        post: operations["createApiKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/api-keys/{keyHash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+                /** @description Mã băm SHA-256 định danh API Key cần thu hồi */
+                keyHash: components["parameters"]["KeyHashParam"];
             };
             cookie?: never;
         };
         get?: never;
         put?: never;
+        post?: never;
         /**
-         * Tạo API key
-         * @description DRAFT placeholder outside Week1; key scope/auth/body require backend review.
+         * Thu hồi (xóa) API Key
+         * @description Xóa `keyHash` khỏi bảng `apikeys`, làm key mất hiệu lực ngay lập tức.
          */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    projectId: components["parameters"]["ProjectId"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Created; body intentionally unspecified */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        delete?: never;
+        delete: operations["revokeApiKey"];
         options?: never;
         head?: never;
         patch?: never;
@@ -122,18 +161,23 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                projectId: components["parameters"]["ProjectId"];
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
             };
             cookie?: never;
         };
-        /** Liệt kê video (cursor) */
-        get: operations["listVideos"];
+        /**
+         * Liệt kê danh sách Video trong Project (phân trang Cursor)
+         * @description Truy vấn GSI `project-index` theo thứ tự `createdAt` giảm dần, sử dụng cursor mã hóa từ `LastEvaluatedKey`.
+         */
+        get: operations["listVideosByProject"];
         put?: never;
         /**
-         * Khởi tạo video và nhận presigned URL
-         * @description DRAFT. Creates UPLOADING before PUT. No create idempotency key is proposed; clients must not automatically retry this POST. See upload-limits.md.
+         * Khởi tạo Video và nhận S3 Presigned PUT URL
+         * @description Kiểm tra giới hạn dung lượng (`sizeBytes <= 209715200`) và định dạng (`contentType`).
+         *     Tạo bản ghi Video ở trạng thái `UPLOADING` và trả về Presigned PUT URL có hiệu lực 15 phút (ký kèm `Content-Length` và `Content-Type`).
          */
-        post: operations["createVideo"];
+        post: operations["initVideoUpload"];
         delete?: never;
         options?: never;
         head?: never;
@@ -145,17 +189,19 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                videoId: components["parameters"]["VideoId"];
+                /** @description Định danh của Video (ví dụ `vid_4a77e1`) */
+                videoId: components["parameters"]["VideoIdParam"];
             };
             cookie?: never;
         };
         get?: never;
         put?: never;
         /**
-         * Xác nhận đã upload (UPLOADING -> PENDING)
-         * @description DRAFT. No request body. Confirm only after verified object presence, size and type. Repeated confirm of PENDING returns the unchanged Video with 202. PROCESSING, COMPLETED and FAILED_* return 409, never regress. The real API must verify HeadObject and enqueue idempotently; mock only records a successful simulated PUT, with no worker/SQS or auto transitions.
+         * Xác nhận đã tải video lên S3 (UPLOADING -> PENDING)
+         * @description Gọi S3 `HeadObject` để xác minh object tồn tại và dung lượng không vượt giới hạn, sau đó chuyển trạng thái `UPLOADING -> PENDING` và gửi job message (`schemaVersion: 1`) vào SQS.
+         *     Thao tác này là **idempotent**: nếu video đã ở `PENDING`, `PROCESSING` hoặc `COMPLETED`, trả về `200 OK` với thông tin hiện tại mà không gửi trùng message SQS.
          */
-        post: operations["confirmVideo"];
+        post: operations["confirmVideoUpload"];
         delete?: never;
         options?: never;
         head?: never;
@@ -167,15 +213,20 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                videoId: components["parameters"]["VideoId"];
+                /** @description Định danh của Video (ví dụ `vid_4a77e1`) */
+                videoId: components["parameters"]["VideoIdParam"];
             };
             cookie?: never;
         };
-        /** Chi tiết video, trạng thái, assets */
+        /** Lấy chi tiết Video, trạng thái xử lý và danh sách Assets */
         get: operations["getVideo"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Xóa Video
+         * @description Xóa bản ghi Video (từ chối `409 Conflict` nếu video đang ở trạng thái `PROCESSING`).
+         */
+        delete: operations["deleteVideo"];
         options?: never;
         head?: never;
         patch?: never;
@@ -185,106 +236,292 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description DRAFT — giả định — chờ Phương xác nhận. Email is trimmed/lowercased; password is not trimmed. */
-        LoginRequest: {
-            /** Format: email */
+        RegisterRequest: {
+            /**
+             * Format: email
+             * @example user@example.com
+             */
             email: string;
+            /**
+             * Format: password
+             * @example Secret123!
+             */
+            password: string;
+            /** @example Nguyen Van A */
+            fullName?: string;
+        };
+        LoginRequest: {
+            /**
+             * Format: email
+             * @example user@example.com
+             */
+            email: string;
+            /**
+             * Format: password
+             * @example Secret123!
+             */
             password: string;
         };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. Public profile, never password/hash. */
-        User: {
+        UserSummary: {
+            /** @example usr_8b31a2 */
             userId: string;
-            /** Format: email */
+            /**
+             * Format: email
+             * @example user@example.com
+             */
             email: string;
-            name: string;
+            /** @example Nguyen Van A */
+            fullName?: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-31T08:00:00Z
+             */
+            createdAt: string;
         };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. ISO expiry alongside opaque access token; no refresh contract. */
-        Session: {
+        AuthResponse: {
+            /**
+             * @description JWT Access Token (HMAC-SHA256)
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
             accessToken: string;
-            /** Format: date-time */
-            expiresAt: string;
-            user: components["schemas"]["User"];
+            /** @example Bearer */
+            tokenType: string;
+            /**
+             * Format: int64
+             * @example 86400
+             */
+            expiresInSeconds: number;
+            user: components["schemas"]["UserSummary"];
         };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. Required description may be empty; name trimmed and not whitespace-only. */
         CreateProjectRequest: {
+            /** @example E-Learning Course Videos */
             name: string;
-            description: string;
+            /** @example Kho video bài giảng học kỳ 1 */
+            description?: string;
+            /**
+             * Format: uri
+             * @description URL nhận callback khi video hoàn tất xử lý (P1)
+             * @example https://elearning.example.com/webhooks/transvidcloud
+             */
+            webhookUrl?: string;
         };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. API projection, not the DynamoDB item; excludes owner/webhook secrets. */
-        Project: {
+        UpdateProjectRequest: {
+            name?: string;
+            description?: string;
+            /** Format: uri */
+            webhookUrl?: string | null;
+        };
+        ProjectResponse: {
+            /** @example prj_1c05d9 */
             projectId: string;
+            /** @example usr_8b31a2 */
+            ownerId: string;
+            /** @example E-Learning Course Videos */
             name: string;
-            description: string;
-            videoCount: number;
-            /** Format: date-time */
+            /** @example Kho video bài giảng học kỳ 1 */
+            description?: string;
+            /** Format: uri */
+            webhookUrl?: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-31T08:05:00Z
+             */
             createdAt: string;
-        };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. No total; nextCursor omitted (not null) on last page. */
-        ProjectList: {
-            items: components["schemas"]["Project"][];
-            nextCursor?: string;
-        };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. Extension is case-insensitive; allowed extension/MIME pairs are mp4/video/mp4, mov/video/quicktime, mkv/video/x-matroska, webm/video/webm. Pair validation is semantic, not expressed by the MIME pattern alone. No paths/control characters in filename. */
-        CreateVideoRequest: {
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-        };
-        /**
-         * @description DRAFT — mirrors video-state-machine.md; no client-owned processing transitions.
-         * @enum {string}
-         */
-        VideoStatus: "UPLOADING" | "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED_VALIDATION" | "FAILED_TRANSCODE" | "FAILED_STORAGE";
-        /** @description DRAFT — giả định — chờ Phương xác nhận. Served /media URLs, not raw S3 keys; hls required when assets present, other renditions/thumbnail optional. Follows s3-key-convention.md. Omitted assets/fields are not null. */
-        VideoAssets: {
-            hls: string;
-            hls360?: string;
-            hls720?: string;
-            thumbnail?: string;
-        };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. List/detail/upload/confirm use this same public projection. COMPLETED fixtures include assets, FAILED_* include errorCode. Conditional presence is a semantic rule reviewed in tests, not an OpenAPI discriminated union. Internal keys, attempts and timestamps for worker execution are not exposed. Duration is optional until probed. */
-        Video: {
-            videoId: string;
-            projectId: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            status: components["schemas"]["VideoStatus"];
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @example 2026-10-31T08:05:00Z
+             */
             updatedAt: string;
-            assets?: components["schemas"]["VideoAssets"];
-            errorCode?: string;
-            durationSeconds?: number;
         };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. Same cursor envelope as ProjectList. */
-        VideoList: {
-            items: components["schemas"]["Video"][];
-            nextCursor?: string;
+        ProjectListResponse: {
+            items: components["schemas"]["ProjectResponse"][];
         };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. Relative mock capability URL; real presigned URL may be absolute. Expires in 15 minutes. Only supplied headers go to PUT, never API bearer auth. Mock returns Content-Type only; browser manages Content-Length (forbidden to set manually). */
-        UploadTicket: {
-            video: components["schemas"]["Video"];
-            /** Format: uri-reference */
-            uploadUrl: string;
-            /** Format: date-time */
-            expiresAt: string;
-            headers: {
+        CreateApiKeyRequest: {
+            /** @example E-Learning Backend Key */
+            name: string;
+        };
+        ApiKeyCreatedResponse: {
+            /**
+             * @description Mã băm SHA-256 lưu trong DynamoDB (dùng làm ID khi thu hồi)
+             * @example 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+             */
+            keyHash: string;
+            /** @example prj_1c05d9 */
+            projectId: string;
+            /** @example E-Learning Backend Key */
+            name: string;
+            /**
+             * @description Giá trị API Key đầy đủ — chỉ trả về một lần duy nhất lúc khởi tạo
+             * @example tvc_live_7f9a8b2c4d6e1f3a5b7c9d0e2f4a6b8c
+             */
+            rawKey: string;
+            /**
+             * @description Tiền tố nhận diện key để hiển thị trên giao diện quản trị
+             * @example tvc_live_7f9a...
+             */
+            keyPrefix: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-31T08:10:00Z
+             */
+            createdAt: string;
+        };
+        ApiKeyMetadataResponse: {
+            /** @example 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 */
+            keyHash: string;
+            /** @example prj_1c05d9 */
+            projectId: string;
+            /** @example E-Learning Backend Key */
+            name: string;
+            /** @example tvc_live_7f9a... */
+            keyPrefix: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-31T08:10:00Z
+             */
+            createdAt: string;
+        };
+        ApiKeyListResponse: {
+            items: components["schemas"]["ApiKeyMetadataResponse"][];
+        };
+        InitVideoRequest: {
+            /** @example Bài giảng Chương 1 - Điện toán đám mây */
+            title: string;
+            /**
+             * @description Tên file gốc để xác định phần mở rộng hợp lệ (`mp4`, `mov`, `mkv`, `webm`)
+             * @example lecture-01.mp4
+             */
+            filename: string;
+            /**
+             * Format: int64
+             * @description Dung lượng file tính bằng byte (tối đa 200 MB = 209715200 bytes theo `contracts/upload-limits.md`)
+             * @example 52428800
+             */
+            sizeBytes: number;
+            /**
+             * @example video/mp4
+             * @enum {string}
+             */
+            contentType: "video/mp4" | "video/quicktime" | "video/x-matroska" | "video/webm";
+        };
+        PresignedUploadInfo: {
+            /**
+             * Format: uri
+             * @description URL S3 Presigned PUT để client đẩy trực tiếp file lên bucket input
+             */
+            presignedUrl: string;
+            /**
+             * @example PUT
+             * @enum {string}
+             */
+            method: "PUT";
+            /** @example 900 */
+            expiresInSeconds: number;
+            /**
+             * @description Các HTTP header mà client bắt buộc gửi khớp khi gọi PUT lên `presignedUrl`
+             * @example {
+             *       "Content-Type": "video/mp4",
+             *       "Content-Length": "52428800"
+             *     }
+             */
+            requiredHeaders: {
                 [key: string]: string;
             };
         };
-        /** @description DRAFT — giả định — chờ Phương xác nhận. HTTP status is not duplicated in JSON. code is an extensible string (not an approved enum); message is user-displayable text, not a stable identifier. No field-errors/requestId yet. */
+        InitVideoResponse: {
+            video: components["schemas"]["VideoResponse"];
+            upload: components["schemas"]["PresignedUploadInfo"];
+        };
+        /**
+         * @description Trạng thái vòng đời của Video theo `contracts/video-state-machine.md`
+         * @enum {string}
+         */
+        VideoStatus: "UPLOADING" | "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED_VALIDATION" | "FAILED_TRANSCODE" | "FAILED_STORAGE";
+        /**
+         * @description Mã lỗi chi tiết do Worker ghi nhận khi trạng thái là `FAILED_*`
+         * @enum {string|null}
+         */
+        VideoErrorCode: "NOT_A_VIDEO" | "CODEC_UNSUPPORTED" | "DURATION_EXCEEDED" | "HEIGHT_EXCEEDED" | "FFMPEG_TIMEOUT" | "FFMPEG_ERROR" | "S3_GET_FAILED" | "S3_PUT_FAILED" | null;
+        /** @description Các đường dẫn phát HLS và thumbnail đã ghép sẵn `TVC_MEDIA_BASE_URL` (chỉ có mặt khi `status = COMPLETED`) */
+        VideoAssets: {
+            /** @example /media/prj_1c05d9/vid_4a77e1/hls/master.m3u8 */
+            masterPlaylistUrl?: string;
+            /** @example /media/prj_1c05d9/vid_4a77e1/hls/360p/index.m3u8 */
+            hls360Url?: string;
+            /** @example /media/prj_1c05d9/vid_4a77e1/hls/720p/index.m3u8 */
+            hls720Url?: string;
+            /** @example /media/prj_1c05d9/vid_4a77e1/thumb/default.jpg */
+            thumbnailUrl?: string;
+        };
+        VideoResponse: {
+            /** @example vid_4a77e1 */
+            videoId: string;
+            /** @example prj_1c05d9 */
+            projectId: string;
+            /** @example Bài giảng Chương 1 - Điện toán đám mây */
+            title: string;
+            status: components["schemas"]["VideoStatus"];
+            /**
+             * Format: int64
+             * @example 52428800
+             */
+            sizeBytes: number;
+            /** @example video/mp4 */
+            contentType: string;
+            /** @example 1 */
+            attemptCount: number;
+            errorCode?: components["schemas"]["VideoErrorCode"];
+            assets?: components["schemas"]["VideoAssets"];
+            /**
+             * Format: date-time
+             * @example 2026-10-31T09:15:00Z
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-31T09:16:02Z
+             */
+            updatedAt: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+        };
+        VideoPageResponse: {
+            items: components["schemas"]["VideoResponse"][];
+            /**
+             * @description Chuỗi cursor truyền vào query param `cursor` cho lần gọi tiếp theo (`null` nếu đã hết dữ liệu)
+             * @example eyJ2aWRlb0lkIjoidmlkXzRhNzdlMSIsImNyZWF0ZWRBdCI6IjIwMjYtMTAtMzFUMDk6MTU6MDBaIn0
+             */
+            nextCursor?: string | null;
+            /** @example false */
+            hasMore: boolean;
+        };
         ErrorResponse: {
-            error: {
-                code: string;
-                message: string;
+            /**
+             * @description Mã lỗi định danh máy đọc được (machine-readable error code)
+             * @example UPLOAD_LIMIT_EXCEEDED
+             */
+            code: string;
+            /**
+             * @description Thông báo mô tả lỗi
+             * @example Dung lượng file vượt quá giới hạn tối đa 200 MB (209715200 bytes)
+             */
+            message: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-31T09:15:00Z
+             */
+            timestamp: string;
+            /** @description Thông tin bổ sung về lỗi (ví dụ danh sách trường vi phạm validation) */
+            details?: {
+                [key: string]: unknown;
             };
         };
     };
     responses: {
-        /** @description DRAFT 400 INVALID_JSON or INVALID_REQUEST (non-object JSON/body on confirm) */
-        BadRequest: {
+        /** @description Dữ liệu đầu vào hoặc tham số truy vấn không hợp lệ (`VALIDATION_ERROR`, `INVALID_CURSOR`) */
+        BadRequestError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -292,8 +529,8 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description DRAFT 401 INVALID_CREDENTIALS for login; UNAUTHORIZED for missing/invalid/expired bearer */
-        Unauthorized: {
+        /** @description Thiếu hoặc sai thông tin xác thực (`UNAUTHORIZED`, `TOKEN_EXPIRED`, `INVALID_API_KEY`, `INVALID_CREDENTIALS`) */
+        UnauthorizedError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -301,8 +538,8 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description DRAFT 403 FORBIDDEN for insufficient access (multi-user authorization not simulated) */
-        Forbidden: {
+        /** @description Không có quyền truy cập tài nguyên thuộc người dùng hoặc Project khác (`ACCESS_DENIED`) */
+        ForbiddenError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -310,8 +547,8 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description DRAFT 404 NOT_FOUND */
-        NotFound: {
+        /** @description Không tìm thấy tài nguyên yêu cầu (`RESOURCE_NOT_FOUND`) */
+        NotFoundError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -319,8 +556,8 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description DRAFT 409 UPLOAD_NOT_COMPLETE or VIDEO_NOT_CONFIRMABLE */
-        Conflict: {
+        /** @description Xung đột trạng thái hoặc dữ liệu trùng lặp (`EMAIL_ALREADY_EXISTS`, `INVALID_STATE_TRANSITION`, `RESOURCE_IN_USE`) */
+        ConflictError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -328,8 +565,8 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description DRAFT 413 UPLOAD_TOO_LARGE (maximum 209715200 bytes) */
-        UploadTooLarge: {
+        /** @description Dung lượng video khai báo vượt quá giới hạn tối đa 200 MB (`UPLOAD_LIMIT_EXCEEDED`) */
+        PayloadTooLargeError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -337,17 +574,8 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description DRAFT 422 VALIDATION_ERROR, UNSUPPORTED_FORMAT or INVALID_CURSOR */
-        ValidationError: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description DRAFT error envelope including 5xx; clients also tolerate non-JSON proxy errors */
-        UnexpectedError: {
+        /** @description Định dạng không được hỗ trợ hoặc kiểm tra object trên S3 thất bại (`UNSUPPORTED_CONTENT_TYPE`, `S3_OBJECT_NOT_FOUND`, `UPLOAD_SIZE_MISMATCH`) */
+        UnprocessableEntityError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -357,18 +585,55 @@ export interface components {
         };
     };
     parameters: {
-        ProjectId: string;
-        VideoId: string;
-        /** @description DRAFT opaque continuation token; URL-encode, do not interpret as an offset. */
-        Cursor: string;
+        /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+        ProjectIdParam: string;
+        /** @description Định danh của Video (ví dụ `vid_4a77e1`) */
+        VideoIdParam: string;
+        /** @description Mã băm SHA-256 định danh API Key cần thu hồi */
+        KeyHashParam: string;
+        /** @description Chuỗi cursor (Base64URL mã hóa từ `LastEvaluatedKey`) nhận được từ trang trước */
+        CursorParam: string;
+        /** @description Số lượng bản ghi tối đa trên một trang */
+        LimitParam: number;
+        /** @description Mã tương quan do client gửi lên để truy vết giao dịch xuyên suốt hệ thống (F-009) */
+        CorrelationIdParam: string;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description Mã tương quan request luôn có mặt trong mọi phản hồi HTTP giúp đối soát log (F-009) */
+        XCorrelationIdHeader: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    login: {
+    registerUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Tạo tài khoản thành công */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            409: components["responses"]["ConflictError"];
+        };
+    };
+    loginUser: {
         parameters: {
             query?: never;
             header?: never;
@@ -381,46 +646,59 @@ export interface operations {
             };
         };
         responses: {
-            /** @description DRAFT session; no refresh token or cookie contract yet */
+            /** @description Đăng nhập thành công */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Session"];
+                    "application/json": components["schemas"]["AuthResponse"];
                 };
             };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            422: components["responses"]["ValidationError"];
-            default: components["responses"]["UnexpectedError"];
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
         };
     };
-    listProjects: {
+    getCurrentUser: {
         parameters: {
-            query?: {
-                /** @description DRAFT opaque continuation token; URL-encode, do not interpret as an offset. */
-                cursor?: components["parameters"]["Cursor"];
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description DRAFT cursor page; omit nextCursor on final page */
+            /** @description Thông tin tài khoản người dùng hiện tại */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectList"];
+                    "application/json": components["schemas"]["UserSummary"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            422: components["responses"]["ValidationError"];
-            default: components["responses"]["UnexpectedError"];
+            401: components["responses"]["UnauthorizedError"];
+        };
+    };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Danh sách Project thuộc quyền sở hữu của user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectListResponse"];
+                };
+            };
+            401: components["responses"]["UnauthorizedError"];
         };
     };
     createProject: {
@@ -436,113 +714,284 @@ export interface operations {
             };
         };
         responses: {
-            /** @description DRAFT created project */
+            /** @description Tạo Project thành công */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Project"];
+                    "application/json": components["schemas"]["ProjectResponse"];
                 };
             };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            422: components["responses"]["ValidationError"];
-            default: components["responses"]["UnexpectedError"];
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
         };
     };
-    listVideos: {
+    getProject: {
         parameters: {
-            query?: {
-                /** @description DRAFT opaque continuation token; URL-encode, do not interpret as an offset. */
-                cursor?: components["parameters"]["Cursor"];
-            };
+            query?: never;
             header?: never;
             path: {
-                projectId: components["parameters"]["ProjectId"];
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description DRAFT cursor page */
+            /** @description Thông tin chi tiết Project */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VideoList"];
+                    "application/json": components["schemas"]["ProjectResponse"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
-            default: components["responses"]["UnexpectedError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
         };
     };
-    createVideo: {
+    deleteProject: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                projectId: components["parameters"]["ProjectId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateVideoRequest"];
-            };
-        };
-        responses: {
-            /** @description DRAFT upload ticket; PUT only to uploadUrl with supplied headers */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UploadTicket"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            413: components["responses"]["UploadTooLarge"];
-            422: components["responses"]["ValidationError"];
-            default: components["responses"]["UnexpectedError"];
-        };
-    };
-    confirmVideo: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                videoId: components["parameters"]["VideoId"];
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description DRAFT accepted Video in PENDING (including idempotent replay) */
+            /** @description Đã xóa Project thành công */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            409: components["responses"]["ConflictError"];
+        };
+    };
+    updateProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Cập nhật Project thành công */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+        };
+    };
+    listApiKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Danh sách API Key của Project */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyListResponse"];
+                };
+            };
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+        };
+    };
+    createApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApiKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Tạo API Key thành công (lưu lại `rawKey` ngay vì sẽ không hiển thị lại) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreatedResponse"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+        };
+    };
+    revokeApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+                /** @description Mã băm SHA-256 định danh API Key cần thu hồi */
+                keyHash: components["parameters"]["KeyHashParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Đã thu hồi API Key thành công */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+        };
+    };
+    listVideosByProject: {
+        parameters: {
+            query?: {
+                /** @description Chuỗi cursor (Base64URL mã hóa từ `LastEvaluatedKey`) nhận được từ trang trước */
+                cursor?: components["parameters"]["CursorParam"];
+                /** @description Số lượng bản ghi tối đa trên một trang */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trang danh sách Video kèm `nextCursor` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoPageResponse"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+        };
+    };
+    initVideoUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Project (ví dụ `prj_1c05d9`) */
+                projectId: components["parameters"]["ProjectIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Khởi tạo Video và cấp Presigned URL thành công */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitVideoResponse"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            413: components["responses"]["PayloadTooLargeError"];
+            422: components["responses"]["UnprocessableEntityError"];
+        };
+    };
+    confirmVideoUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Video (ví dụ `vid_4a77e1`) */
+                videoId: components["parameters"]["VideoIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Video đã được xác nhận trước đó (idempotent response) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoResponse"];
+                };
+            };
+            /** @description Xác nhận thành công, đã chuyển sang `PENDING` và đưa job vào hàng đợi SQS */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Video"];
+                    "application/json": components["schemas"]["VideoResponse"];
                 };
             };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            413: components["responses"]["UploadTooLarge"];
-            422: components["responses"]["ValidationError"];
-            default: components["responses"]["UnexpectedError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            409: components["responses"]["ConflictError"];
+            422: components["responses"]["UnprocessableEntityError"];
         };
     };
     getVideo: {
@@ -550,25 +999,50 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                videoId: components["parameters"]["VideoId"];
+                /** @description Định danh của Video (ví dụ `vid_4a77e1`) */
+                videoId: components["parameters"]["VideoIdParam"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description DRAFT video detail; same shape as list items */
+            /** @description Chi tiết Video, trạng thái và các đường dẫn phát HLS / thumbnail */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Video"];
+                    "application/json": components["schemas"]["VideoResponse"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            default: components["responses"]["UnexpectedError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+        };
+    };
+    deleteVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Định danh của Video (ví dụ `vid_4a77e1`) */
+                videoId: components["parameters"]["VideoIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Đã xóa Video thành công */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            409: components["responses"]["ConflictError"];
         };
     };
 }

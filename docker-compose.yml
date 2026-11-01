@@ -1,10 +1,10 @@
-cl# Local stack. Profiles:
+# Local stack. Profiles:
 #   (mặc định)  chỉ localstack            -> make infra
 #   app / full  thêm backend, worker      -> make up
 #   full        thêm nginx giả lập CloudFront
 services:
   localstack:
-    image: ${LOCALSTACK_IMAGE:-localstack/localstack:latest}
+    image: ${LOCALSTACK_IMAGE:-localstack/localstack:3.0}
     ports:
       - "4566:4566"
     environment:
@@ -32,10 +32,24 @@ services:
       AWS_REGION: ap-southeast-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      TVC_INPUT_BUCKET: tvc-local-input
+      TVC_OUTPUT_BUCKET: tvc-local-output
+      S3_BUCKET_INPUT: tvc-local-input
+      S3_BUCKET_OUTPUT: tvc-local-output
+      SQS_QUEUE_NAME: tvc-local-jobs
+      TVC_JOBS_QUEUE_URL: http://localstack:4566/000000000000/tvc-local-jobs
+      DDB_TABLE_PREFIX: tvc-local-
+      TVC_MEDIA_BASE_URL: /media
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-must-be-at-least-32-bytes-long}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-209715200}
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
 
   worker:
     build: ./worker

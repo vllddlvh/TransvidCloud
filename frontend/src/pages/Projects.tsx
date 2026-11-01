@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { ArrowUpRight, FolderOpen, Plus, Video, ArrowRight } from 'lucide-react'
+import { ArrowUpRight, FolderOpen, Plus, Video, ArrowRight, Webhook } from 'lucide-react'
 import { api } from '../api/client'
 import { Modal } from '../components/Modal'
 import { ErrorCard, useNotice } from '../components/Notice'
@@ -18,10 +18,16 @@ export function Projects() {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const name = String(form.get('name')).trim()
+    const description = String(form.get('description')).trim()
+    const webhookUrl = String(form.get('webhookUrl') ?? '').trim()
     if (!name) { setFormError('Enter a project name.'); return }
     setBusy(true); setFormError('')
     try {
-      await api.createProject({ name, description: String(form.get('description')).trim() })
+      await api.createProject({
+        name,
+        description,
+        ...(webhookUrl ? { webhookUrl } : {}),
+      })
       setCreating(false); reload(); notify('Project created. Ready for your first video.')
     } catch (reason) { setFormError((reason as Error).message) }
     finally { setBusy(false) }
@@ -43,7 +49,14 @@ export function Projects() {
       {filtered.map((project) => <Link className="project-card card" to={`/projects/${encodeURIComponent(project.projectId)}/videos`} key={project.projectId}>
         <div className="project-card-top"><span className="folder-icon"><FolderOpen size={24} /></span><ArrowUpRight className="card-arrow" size={18} /></div>
         <h3>{project.name}</h3><p className="project-description">{project.description || 'A fresh space for your next video.'}</p>
-        <div className="project-meta"><span><Video size={15} />{project.videoCount} {project.videoCount === 1 ? 'video' : 'videos'}</span><span>{formatDate(project.createdAt)}</span></div>
+        <div className="project-meta">
+          <span>
+            {project.webhookUrl
+              ? <><Webhook size={15} />Webhook</>
+              : <><Video size={15} />{project.videoCount > 0 ? `${project.videoCount} ${project.videoCount === 1 ? 'video' : 'videos'}` : 'Active project'}</>}
+          </span>
+          <span>{formatDate(project.createdAt)}</span>
+        </div>
       </Link>)}
       {!search && <button className="new-project-card card" onClick={() => { setCreating(true); setFormError('') }}><span className="new-project-icon"><Plus /></span><strong>Create a new project</strong><span className="small muted">Give your next idea a space of its own</span><ArrowRight size={18} /></button>}
     </div>}
@@ -51,8 +64,9 @@ export function Projects() {
     <div className="page-footnote"><span className="small muted">A little structure. A lot of possibility.</span></div>
     {creating && <Modal title="Create a project" onClose={() => { if (!busy) setCreating(false) }}>
       <p className="muted">Bring related videos together in one place.</p><form onSubmit={create}>
-        <label>Project name<input name="name" placeholder="e.g. Product launch" maxLength={100} required disabled={busy} /></label>
-        <label>Description <span className="muted">(optional)</span><textarea name="description" placeholder="What is this project about?" maxLength={1000} rows={3} disabled={busy} /></label>
+        <label>Project name<input name="name" placeholder="e.g. Product launch" maxLength={120} required disabled={busy} /></label>
+        <label>Description <span className="muted">(optional)</span><textarea name="description" placeholder="What is this project about?" maxLength={500} rows={3} disabled={busy} /></label>
+        <label>Webhook URL <span className="muted">(optional)</span><input name="webhookUrl" type="url" placeholder="https://example.com/webhooks/transvid" disabled={busy} /></label>
         {formError && <p className="inline-error" role="alert">{formError}</p>}
         <div className="modal-actions"><button className="button" type="button" onClick={() => setCreating(false)} disabled={busy}>Cancel</button><button className="button button-outline" disabled={busy}>{busy ? 'Creating…' : 'Create project'}</button></div>
       </form>

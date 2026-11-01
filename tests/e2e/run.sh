@@ -104,6 +104,18 @@ aws_() {
   fi
 }
 
+ffprobe_() {
+  if command -v ffprobe >/dev/null 2>&1; then
+    ffprobe "$@"
+  else
+    local img="${E2E_WORKER_IMAGE:-transvidcloud-worker}"
+    if ! docker image inspect "$img" >/dev/null 2>&1; then
+      img="tvc-worker:e2e"
+    fi
+    docker run --rm --entrypoint ffprobe -v "$RUN_DIR:$RUN_DIR:ro" "$img" "$@"
+  fi
+}
+
 sha256_of() {
   if command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "$1" | cut -d' ' -f1
@@ -126,7 +138,14 @@ wait_media_server() {
 }
 
 start_media_server() {
-  command -v nginx >/dev/null 2>&1 || fail "thiếu nginx trong PATH"
+  local probe_code
+  probe_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 1 "http://127.0.0.1:$PORT/media/__e2e_probe" || true)"
+  if [ -n "$probe_code" ] && [ "$probe_code" != "000" ]; then
+    MEDIA_BASE="http://127.0.0.1:$PORT"
+    record "media server dùng sẵn trên cổng $PORT: $MEDIA_BASE/media/*"
+    return 0
+  fi
+  command -v nginx >/dev/null 2>&1 || fail "thiếu nginx trong PATH (hoặc bật 'make up' để dùng edge nginx trên cổng $PORT)"
   local dir="$RUN_DIR/nginx"
   mkdir -p "$dir/logs"
   cat > "$dir/mime.types" <<'EOF'
@@ -216,7 +235,7 @@ assert_playback_http() { # assert_playback_http <label> <master_url> <thumb_url>
       seg_count=$((seg_count + 1))
     done < <(grep -E '\.ts$' "$dir/$rendition/index.m3u8" || true)
     [ "$seg_count" -gt 0 ] || fail "$rendition playlist không tham chiếu segment .ts"
-    out="$(ffprobe -v error -allowed_extensions ALL -select_streams v:0 -count_frames \
+    out="$(ffprobe_ -v error -allowed_extensions ALL -select_streams v:0 -count_frames \
       -show_entries stream=height,nb_read_frames -of csv=p=0 \
       "$dir/$rendition/index.m3u8" 2>/dev/null | head -n 1 | tr -d '\r')"
     height="${out%%,*}"
@@ -273,10 +292,10 @@ json_or_fail() { # json_or_fail <file> <path> <bước>
 run_api() {
   command -v curl >/dev/null 2>&1 || fail "thiếu curl"
   command -v python3 >/dev/null 2>&1 || fail "thiếu python3"
-  command -v ffprobe >/dev/null 2>&1 || fail "thiếu ffprobe"
+  command -v ffprobe >/dev/null 2>&1 || command -v docker >/dev/null 2>&1 || fail "thiếu ffprobe hoặc docker"
   [ -f "$SAMPLE" ] || fail "thiếu video mẫu $SAMPLE"
-  [ -n "${E2E_EMAIL:-}" ] && [ -n "${E2E_PASSWORD:-}" ] \
-    || fail "đặt E2E_EMAIL và E2E_PASSWORD để chạy chế độ api"
+  E2E_EMAIL="${E2E_EMAIL:-e2e-runner@transvidcloud.test}"
+  E2E_PASSWORD="${E2E_PASSWORD:-DemoPass123!}"
 
   BASE_URL="${BASE_URL:-http://localhost:8000}"
   BASE_URL="${BASE_URL%/}"
@@ -284,7 +303,7 @@ run_api() {
     */api) API_BASE="$BASE_URL"; ORIGIN="${BASE_URL%/api}" ;;
     *) API_BASE="$BASE_URL/api"; ORIGIN="$BASE_URL" ;;
   esac
-  record "api base=$API_BASE origin=$ORIGIN (openapi DRAFT)"
+  record "api base=$API_BASE origin=$ORIGIN (contracts/openapi.yaml SSOT)"
 
   local body="$RUN_DIR/login.json"
   python3 -c 'import json,sys; print(json.dumps({"email":sys.argv[1],"password":sys.argv[2]}))' \
@@ -292,10 +311,19 @@ run_api() {
   local code
   code="$(api_call POST /auth/login "$RUN_DIR/login-request.json" "$body")"
   rm -f "$RUN_DIR/login-request.json"
-  expect_2xx "$code" "$body" "login"
+  if [ "$code" = "401" ]; then
+    python3 -c 'import json,sys; print(json.dumps({"email":sys.argv[1],"password":sys.argv[2],"fullName":"E2E Runner"}))' \
+      "$E2E_EMAIL" "$E2E_PASSWORD" > "$RUN_DIR/register-request.json"
+    code="$(api_call POST /auth/register "$RUN_DIR/register-request.json" "$body")"
+    rm -f "$RUN_DIR/register-request.json"
+    expect_2xx "$code" "$body" "register"
+    record "register user mới thành công (HTTP $code)"
+  else
+    expect_2xx "$code" "$body" "login"
+  fi
   TOKEN="$(json_or_fail "$body" accessToken login)"
   rm -f "$body" # không lưu access token trong bằng chứng
-  record "login OK (access token giữ trong bộ nhớ, không ghi bằng chứng)"
+  record "auth OK (access token giữ trong bộ nhớ, không ghi bằng chứng)"
 
   local project_body="$RUN_DIR/project-request.json"
   python3 -c 'import json,sys; print(json.dumps({"name":sys.argv[1],"description":"E2E runner"}))' \
@@ -308,19 +336,26 @@ run_api() {
   local size filename video_body
   size="$(wc -c < "$SAMPLE" | tr -d ' ')"
   filename="$(basename "$SAMPLE")"
-  python3 -c 'import json,sys; print(json.dumps({"filename":sys.argv[1],"sizeBytes":int(sys.argv[2]),"contentType":"video/mp4"}))' \
+  python3 -c 'import json,sys; print(json.dumps({"title":sys.argv[1],"filename":sys.argv[1],"sizeBytes":int(sys.argv[2]),"contentType":"video/mp4"}))' \
     "$filename" "$size" > "$RUN_DIR/video-request.json"
   UPLOAD_TICKET="$RUN_DIR/upload-ticket.json"
   code="$(api_call POST "/projects/$PROJECT/videos" "$RUN_DIR/video-request.json" "$UPLOAD_TICKET")"
   expect_2xx "$code" "$UPLOAD_TICKET" "tạo video"
   VIDEO="$(json_or_fail "$UPLOAD_TICKET" video.videoId "tạo video")"
-  local ticket_upload expires headers_count
-  ticket_upload="$(json_or_fail "$UPLOAD_TICKET" uploadUrl "tạo video")"
-  expires="$(json_or_fail "$UPLOAD_TICKET" expiresAt "tạo video")"
-  headers_count="$(json_headers "$UPLOAD_TICKET" | wc -l | tr -d ' ')"
+  local ticket_upload expires headers_path headers_count
+  ticket_upload="$(json_get "$UPLOAD_TICKET" upload.presignedUrl || json_get "$UPLOAD_TICKET" uploadUrl || true)"
+  [ -n "$ticket_upload" ] || fail "tạo video: thiếu upload.presignedUrl"
+  expires="$(json_get "$UPLOAD_TICKET" upload.expiresInSeconds || json_get "$UPLOAD_TICKET" expiresAt || true)"
+  [ -n "$expires" ] || fail "tạo video: thiếu upload.expiresInSeconds"
+  if json_get "$UPLOAD_TICKET" upload.requiredHeaders >/dev/null 2>&1; then
+    headers_path="upload.requiredHeaders"
+  else
+    headers_path="headers"
+  fi
+  headers_count="$(json_headers "$UPLOAD_TICKET" "$headers_path" | wc -l | tr -d ' ')"
   [ "$headers_count" -ge 1 ] || fail "upload ticket không có header nào để PUT"
   local asset_base="/media/$PROJECT/$VIDEO"
-  record "videoId=$VIDEO sizeBytes=$size expiresAt=$expires uploadHeaders=$headers_count (không ghi URL ký)"
+  record "videoId=$VIDEO sizeBytes=$size expires=$expires uploadHeaders=$headers_count (không ghi URL ký)"
 
   local upload_url="$ticket_upload"
   case "$upload_url" in
@@ -335,7 +370,7 @@ run_api() {
       content-length|host) continue ;; # curl tự quản lý, không gửi thủ công
     esac
     upload_args+=(-H "$hk: $hv")
-  done < <(json_headers "$UPLOAD_TICKET")
+  done < <(json_headers "$UPLOAD_TICKET" "$headers_path")
   # Không gửi Authorization lên presigned URL.
   if ! code="$(curl "${upload_args[@]}" "$upload_url")"; then
     fail "PUT lên uploadUrl thất bại"
@@ -369,11 +404,11 @@ run_api() {
   record "video $VIDEO COMPLETED sau $((SECONDS - start))s"
 
   local hls thumb
-  hls="$(json_or_fail "$detail" assets.hls "assets")"
-  thumb="$(json_or_fail "$detail" assets.thumbnail "assets")"
-  [ "$hls" = "$asset_base/hls/master.m3u8" ] || fail "assets.hls=$hls (mong $asset_base/hls/master.m3u8)"
-  [ "$thumb" = "$asset_base/thumb/default.jpg" ] || fail "assets.thumbnail=$thumb (mong $asset_base/thumb/default.jpg)"
-  record "assets.hls=$hls assets.thumbnail=$thumb"
+  hls="$(json_get "$detail" assets.masterPlaylistUrl || json_get "$detail" assets.hls || true)"
+  thumb="$(json_get "$detail" assets.thumbnailUrl || json_get "$detail" assets.thumbnail || true)"
+  [ "$hls" = "$asset_base/hls/master.m3u8" ] || fail "assets.masterPlaylistUrl=$hls (mong $asset_base/hls/master.m3u8)"
+  [ "$thumb" = "$asset_base/thumb/default.jpg" ] || fail "assets.thumbnailUrl=$thumb (mong $asset_base/thumb/default.jpg)"
+  record "assets.masterPlaylistUrl=$hls assets.thumbnailUrl=$thumb"
 
   local master_url thumb_url
   case "$hls" in http*) master_url="$hls" ;; *) master_url="$ORIGIN$hls" ;; esac
@@ -381,7 +416,11 @@ run_api() {
   assert_playback_http api "$master_url" "$thumb_url" "$asset_base"
 
   if [ "$KEEP" != "1" ]; then
-    record "cleanup api: contract DRAFT không có DELETE; giữ project/video $PROJECT/$VIDEO trên môi trường test"
+    code="$(api_call DELETE "/videos/$VIDEO" - "$RUN_DIR/delete-video.json")"
+    expect_2xx "$code" "$RUN_DIR/delete-video.json" "delete video"
+    code="$(api_call DELETE "/projects/$PROJECT" - "$RUN_DIR/delete-project.json")"
+    expect_2xx "$code" "$RUN_DIR/delete-project.json" "delete project"
+    record "cleanup api: đã xóa video $VIDEO và project $PROJECT qua DELETE API"
   fi
   record "KẾT LUẬN A4: API E2E PASS (videoId=$VIDEO)"
 }
@@ -578,10 +617,10 @@ stop_worker_container() { # stop_worker_container <expect_code>
 
 run_worker() {
   command -v docker >/dev/null 2>&1 || fail "thiếu docker để chạy image worker"
-  command -v ffprobe >/dev/null 2>&1 || fail "thiếu ffprobe"
   command -v curl >/dev/null 2>&1 || fail "thiếu curl"
   [ -f "$SAMPLE" ] || fail "thiếu video mẫu $SAMPLE"
   docker inspect "$LOCALSTACK_CONTAINER" >/dev/null 2>&1 \
+    || (cd "$ROOT" && docker compose ps localstack --status running | grep -q localstack) \
     || fail "LocalStack chưa chạy — chạy 'make infra' trước"
 
   local image="${E2E_WORKER_IMAGE:-tvc-worker:e2e}"

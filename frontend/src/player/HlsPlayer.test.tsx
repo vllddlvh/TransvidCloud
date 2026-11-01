@@ -118,4 +118,23 @@ describe('HlsPlayer', () => {
     expect(video).not.toHaveAttribute('src')
     expect(video).not.toHaveAttribute('poster')
   })
+
+  it('switches between Auto (ABR), 720p HD, and 360p SD renditions', () => {
+    render(<HlsPlayer assets={assets} />)
+    const video = screen.getByLabelText('Video player')
+    expect(video).toHaveAttribute('data-quality', 'auto')
+    expect(hlsMock.loadSource).toHaveBeenLastCalledWith(assets.hls)
+
+    fireEvent.click(screen.getByRole('button', { name: '720p HD' }))
+    expect(video).toHaveAttribute('data-quality', '720p')
+    expect(hlsMock.loadSource).toHaveBeenLastCalledWith(assets.hls720)
+
+    fireEvent.click(screen.getByRole('button', { name: '360p SD' }))
+    expect(video).toHaveAttribute('data-quality', '360p')
+    expect(hlsMock.loadSource).toHaveBeenLastCalledWith(assets.hls360)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Auto (ABR)' }))
+    expect(video).toHaveAttribute('data-quality', 'auto')
+    expect(hlsMock.loadSource).toHaveBeenLastCalledWith(assets.hls)
+  })
 })

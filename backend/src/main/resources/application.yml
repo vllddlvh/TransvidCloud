@@ -30,12 +30,12 @@ tvc:
   aws:
     endpoint: ${AWS_ENDPOINT_URL:http://localhost:4566}
     s3:
-      input-bucket: ${S3_BUCKET_INPUT:tvc-local-input}
-      output-bucket: ${S3_BUCKET_OUTPUT:tvc-local-output}
+      input-bucket: ${S3_BUCKET_INPUT:${TVC_INPUT_BUCKET:tvc-local-input}}
+      output-bucket: ${S3_BUCKET_OUTPUT:${TVC_OUTPUT_BUCKET:tvc-local-output}}
       presign-endpoint: ${S3_PRESIGN_ENDPOINT:http://localhost:4566}
       presign-ttl-minutes: 15
     sqs:
-      jobs-queue-name: ${SQS_QUEUE_NAME:tvc-local-jobs}
+      jobs-queue-name: ${SQS_QUEUE_NAME:${TVC_JOBS_QUEUE_URL:tvc-local-jobs}}
     dynamodb:
       table-prefix: ${DDB_TABLE_PREFIX:tvc-local-}
   upload:
