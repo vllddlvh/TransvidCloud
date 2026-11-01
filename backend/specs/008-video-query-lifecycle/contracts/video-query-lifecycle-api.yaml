@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: TransVidCloud Video Query & Lifecycle API (F-008)
+  version: 0.1.0
+  description: OpenAPI Contract trích xuất cho các tính năng Liệt kê danh sách video kèm phân trang con trỏ, Xem chi tiết kèm Assets, và Xóa video.
+
+paths:
+  /projects/{projectId}/videos:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        description: Định danh dự án (ví dụ prj_1c05d9)
+        schema:
+          type: string
+    get:
+      tags: [Videos]
+      operationId: listVideosByProject
+      summary: Liệt kê danh sách Video trong Project (phân trang Cursor)
+      description: Truy vấn GSI project-index theo thứ tự createdAt giảm dần, sử dụng cursor Base64URL mã hóa từ LastEvaluatedKey.
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Chuỗi cursor Base64URL nhận được từ trang trước
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Số lượng bản ghi tối đa trên một trang (mặc định 20, tối đa 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Trang danh sách Video kèm nextCursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoPageResponse"
+        "400":
+          description: Cursor không hợp lệ hoặc limit sai giới hạn (INVALID_CURSOR, VALIDATION_ERROR)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Chưa xác thực hoặc token/key không hợp lệ (UNAUTHENTICATED)
+        "403":
+          description: Không có quyền truy cập vào Project này (ACCESS_DENIED)
+        "404":
+          description: Không tìm thấy Project (RESOURCE_NOT_FOUND)
+
+  /videos/{videoId}:
+    parameters:
+      - name: videoId
+        in: path
+        required: true
+        description: Định danh video (ví dụ vid_4a77e1)
+        schema:
+          type: string
+    get:
+      tags: [Videos]
+      operationId: getVideo
+      summary: Lấy chi tiết Video, trạng thái xử lý và danh sách Assets
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Chi tiết Video và các đường dẫn phát HLS / thumbnail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "401":
+          description: Chưa xác thực (UNAUTHENTICATED)
+        "403":
+          description: Không có quyền truy cập video này (ACCESS_DENIED)
+        "404":
+          description: Video không tồn tại (RESOURCE_NOT_FOUND)
+
+    delete:
+      tags: [Videos]
+      operationId: deleteVideo
+      summary: Xóa Video
+      description: Xóa bản ghi Video (từ chối 409 Conflict nếu video đang ở trạng thái PROCESSING).
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "204":
+          description: Đã xóa Video thành công
+        "401":
+          description: Chưa xác thực (UNAUTHENTICATED)
+        "403":
+          description: Không có quyền xóa video này (ACCESS_DENIED)
+        "404":
+          description: Video không tồn tại (RESOURCE_NOT_FOUND)
+        "409":
+          description: Video đang trong tiến trình xử lý chuyển mã PROCESSING (INVALID_STATE_TRANSITION)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    VideoStatus:
+      type: string
+      enum:
+        - UPLOADING
+        - PENDING
+        - PROCESSING
+        - COMPLETED
+        - FAILED_VALIDATION
+        - FAILED_TRANSCODE
+        - FAILED_STORAGE
+
+    VideoAssets:
+      type: object
+      properties:
+        masterPlaylistUrl:
+          type: string
+          example: /media/prj_1c05d9/vid_4a77e1/hls/master.m3u8
+        hls360Url:
+          type: string
+          example: /media/prj_1c05d9/vid_4a77e1/hls/360p/index.m3u8
+        hls720Url:
+          type: string
+          example: /media/prj_1c05d9/vid_4a77e1/hls/720p/index.m3u8
+        thumbnailUrl:
+          type: string
+          example: /media/prj_1c05d9/vid_4a77e1/thumb/default.jpg
+
+    VideoResponse:
+      type: object
+      required: [videoId, projectId, title, status, sizeBytes, contentType, attemptCount, createdAt, updatedAt]
+      properties:
+        videoId:
+          type: string
+          example: vid_4a77e1
+        projectId:
+          type: string
+          example: prj_1c05d9
+        title:
+          type: string
+          example: Video Bài giảng
+        status:
+          $ref: "#/components/schemas/VideoStatus"
+        sizeBytes:
+          type: integer
+          format: int64
+          example: 52428800
+        contentType:
+          type: string
+          example: video/mp4
+        attemptCount:
+          type: integer
+          example: 1
+        errorCode:
+          type: string
+          nullable: true
+          example: null
+        assets:
+          $ref: "#/components/schemas/VideoAssets"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T09:15:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T09:16:02Z"
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    VideoPageResponse:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoResponse"
+        nextCursor:
+          type: string
+          nullable: true
+          example: eyJwcm9qZWN0SWQiOiJwcmpfMWMwNWQ5IiwidmlkZW9JZCI6InZpZF80YTc3ZTEiLCJjcmVhdGVkQXQiOiIyMDI2LTEwLTMxVDA5OjE1OjAwWiJ9
+        hasMore:
+          type: boolean
+          example: true
+
+    ErrorResponse:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:
+          type: string
+          example: INVALID_CURSOR
+        message:
+          type: string
+          example: Con trỏ phân trang không hợp lệ hoặc đã bị thay đổi
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-31T09:15:00Z"

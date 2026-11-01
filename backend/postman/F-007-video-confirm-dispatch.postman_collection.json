@@ -1,0 +1,764 @@
+{
+  "info": {
+    "_postman_id": "tvc-f007-video-confirm-dispatch",
+    "name": "F-007: Xác nhận Upload, Chuyển trạng thái & Điều phối SQS Job",
+    "description": "Bộ Postman Collection E2E chuyên biệt cho Feature F-007: Xác nhận Upload, Chuyển trạng thái & Điều phối SQS Job (Epic A3/A5). Kiểm thử toàn diện 16 kịch bản từ khâu Setup người dùng, Project, API Key, kiểm tra chặn 422 khi chưa upload lên S3, đẩy byte thật lên S3 qua Presigned URL, chặn 403 khi cross-tenant, xác nhận lần đầu (202 Accepted), xác nhận lặp lại Idempotent (200 OK), xác thực API Key, chặn 404 Not Found và chặn 401 Unauthorized.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api",
+      "type": "string"
+    },
+    {
+      "key": "tokenA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectAId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectBId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "apiKeyA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "videoId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "uploadUrl",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "videoIdApiKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "uploadUrlApiKey",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Setup - Đăng ký tài khoản Người dùng A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về accessToken hợp lệ cho User A\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('tokenA', jsonData.accessToken);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user.confirm.a.{{$timestamp}}@transvidcloud.io\",\n  \"password\": \"Password123@\",\n  \"fullName\": \"Chủ Sở Hữu Video A\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        }
+      }
+    },
+    {
+      "name": "02. Setup - Đăng ký tài khoản Người dùng B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về accessToken hợp lệ cho User B\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('tokenB', jsonData.accessToken);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user.confirm.b.{{$timestamp}}@transvidcloud.io\",\n  \"password\": \"Password123@\",\n  \"fullName\": \"Người Dùng B\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        }
+      }
+    },
+    {
+      "name": "03. Setup - Người dùng A tạo Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về projectId hợp lệ\", function () {",
+              "    pm.expect(jsonData.projectId).to.be.a('string');",
+              "    pm.expect(jsonData.projectId).to.match(/^prj_/);",
+              "});",
+              "if (jsonData.projectId) {",
+              "    pm.collectionVariables.set('projectAId', jsonData.projectId);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Dự án Xác nhận Video A\",\n  \"description\": \"Kiểm thử E2E Xác nhận video\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        }
+      }
+    },
+    {
+      "name": "04. Setup - Người dùng B tạo Project B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về projectId hợp lệ\", function () {",
+              "    pm.expect(jsonData.projectId).to.be.a('string');",
+              "});",
+              "if (jsonData.projectId) {",
+              "    pm.collectionVariables.set('projectBId', jsonData.projectId);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Dự án Người dùng B\",\n  \"description\": \"Tenant B\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        }
+      }
+    },
+    {
+      "name": "05. Setup - Người dùng A tạo API Key cho Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về rawKey API Key\", function () {",
+              "    pm.expect(jsonData.rawKey).to.be.a('string');",
+              "    pm.expect(jsonData.rawKey).to.match(/^tvc_live_/);",
+              "});",
+              "if (jsonData.rawKey) {",
+              "    pm.collectionVariables.set('apiKeyA', jsonData.rawKey);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"E2E Test Key Project A\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "api-keys"
+          ]
+        }
+      }
+    },
+    {
+      "name": "06. Setup - Người dùng A khởi tạo Video",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về videoId và presigned uploadUrl\", function () {",
+              "    pm.expect(jsonData.video).to.be.an('object');",
+              "    pm.expect(jsonData.video.videoId).to.match(/^vid_/);",
+              "    pm.expect(jsonData.video.status).to.eql('UPLOADING');",
+              "    pm.expect(jsonData.upload).to.be.an('object');",
+              "    pm.expect(jsonData.upload.presignedUrl).to.be.a('string');",
+              "});",
+              "if (jsonData.video && jsonData.video.videoId) {",
+              "    pm.collectionVariables.set('videoId', jsonData.video.videoId);",
+              "}",
+              "if (jsonData.upload && jsonData.upload.presignedUrl) {",
+              "    pm.collectionVariables.set('uploadUrl', jsonData.upload.presignedUrl);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Video E2E Test 001\",\n  \"filename\": \"sample.mp4\",\n  \"sizeBytes\": 1024,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        }
+      }
+    },
+    {
+      "name": "07. US3 - Chặn xác nhận khi tệp chưa upload lên S3 (422 S3_OBJECT_NOT_FOUND)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 422 Unprocessable Entity\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là S3_OBJECT_NOT_FOUND\", function () {",
+              "    pm.expect(jsonData.code).to.eql('S3_OBJECT_NOT_FOUND');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId}}/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "videos",
+            "{{videoId}}",
+            "confirm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "08. US1 - Đẩy byte video lên S3 qua Presigned PUT URL",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"S3 PUT thành công (Status code 200 hoặc 204)\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "video/mp4"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "POSTMAN_SAMPLE_VIDEO_CONTENT_BYTES_12345"
+        },
+        "url": {
+          "raw": "{{uploadUrl}}",
+          "host": [
+            "{{uploadUrl}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "09. US4 - Chặn người dùng khác xác nhận video (403 ACCESS_DENIED)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là ACCESS_DENIED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId}}/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "videos",
+            "{{videoId}}",
+            "confirm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "10. US1 - Xác nhận upload video lần đầu thành công (202 Accepted)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 202 Accepted\", function () {",
+              "    pm.response.to.have.status(202);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Video chuyển trạng thái sang PENDING và cập nhật dung lượng\", function () {",
+              "    pm.expect(jsonData.videoId).to.eql(pm.collectionVariables.get('videoId'));",
+              "    pm.expect(jsonData.status).to.eql('PENDING');",
+              "    pm.expect(jsonData.sizeBytes).to.be.above(0);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId}}/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "videos",
+            "{{videoId}}",
+            "confirm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "11. US2 - Xác nhận upload lặp lại Idempotent (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 200 OK (Idempotent replay)\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Video vẫn ở trạng thái PENDING\", function () {",
+              "    pm.expect(jsonData.videoId).to.eql(pm.collectionVariables.get('videoId'));",
+              "    pm.expect(jsonData.status).to.eql('PENDING');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId}}/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "videos",
+            "{{videoId}}",
+            "confirm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "12. Setup - Khởi tạo Video thứ hai bằng API Key",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về videoIdApiKey và uploadUrlApiKey\", function () {",
+              "    pm.expect(jsonData.video.videoId).to.match(/^vid_/);",
+              "    pm.expect(jsonData.upload.presignedUrl).to.be.a('string');",
+              "});",
+              "if (jsonData.video && jsonData.video.videoId) {",
+              "    pm.collectionVariables.set('videoIdApiKey', jsonData.video.videoId);",
+              "}",
+              "if (jsonData.upload && jsonData.upload.presignedUrl) {",
+              "    pm.collectionVariables.set('uploadUrlApiKey', jsonData.upload.presignedUrl);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKeyA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Video khởi tạo bằng API Key\",\n  \"filename\": \"apikey_upload.mp4\",\n  \"sizeBytes\": 2048,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        }
+      }
+    },
+    {
+      "name": "13. US4 - Đẩy byte video thứ hai lên S3 qua Presigned PUT URL",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"S3 PUT thành công (Status code 200 hoặc 204)\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "video/mp4"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "APIKEY_SECOND_VIDEO_SAMPLE_BYTES"
+        },
+        "url": {
+          "raw": "{{uploadUrlApiKey}}",
+          "host": [
+            "{{uploadUrlApiKey}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "14. US4 - Xác nhận video thứ hai bằng API Key (202 Accepted)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 202 Accepted\", function () {",
+              "    pm.response.to.have.status(202);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Video chuyển trạng thái sang PENDING qua API Key\", function () {",
+              "    pm.expect(jsonData.videoId).to.eql(pm.collectionVariables.get('videoIdApiKey'));",
+              "    pm.expect(jsonData.status).to.eql('PENDING');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKeyA}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoIdApiKey}}/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "videos",
+            "{{videoIdApiKey}}",
+            "confirm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "15. US4 - Chặn xác nhận video không tồn tại (404 RESOURCE_NOT_FOUND)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là RESOURCE_NOT_FOUND\", function () {",
+              "    pm.expect(jsonData.code).to.eql('RESOURCE_NOT_FOUND');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/vid_non_existent_999999/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "videos",
+            "vid_non_existent_999999",
+            "confirm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "16. US4 - Chặn xác nhận khi không có token hoặc API Key (401 UNAUTHENTICATED)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId}}/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "videos",
+            "{{videoId}}",
+            "confirm"
+          ]
+        }
+      }
+    }
+  ]
+}

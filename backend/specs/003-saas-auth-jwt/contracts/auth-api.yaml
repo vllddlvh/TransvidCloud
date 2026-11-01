@@ -1,0 +1,165 @@
+openapi: 3.0.3
+info:
+  title: TransVidCloud Auth API Contract (Feature F-003)
+  version: 0.1.0
+  description: Trích xuất các endpoints xác thực SaaS User từ master contract contracts/openapi.yaml
+
+servers:
+  - url: /api
+    description: Context path mặc định của Backend
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerUser
+      summary: Đăng ký tài khoản SaaS mới
+      description: Tạo tài khoản mới với email duy nhất (bảo đảm bằng DynamoDB TransactWriteItems) và trả về JWT.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Tạo tài khoản thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Dữ liệu đầu vào không hợp lệ (VALIDATION_ERROR)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email đã tồn tại (EMAIL_ALREADY_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginUser
+      summary: Đăng nhập và nhận JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Thiếu thông tin bắt buộc (VALIDATION_ERROR)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sai thông tin đăng nhập (INVALID_CREDENTIALS / UNAUTHENTICATED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 100
+          example: Secret123!
+        fullName:
+          type: string
+          maxLength: 100
+          example: Nguyen Van A
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: Secret123!
+
+    UserSummary:
+      type: object
+      required: [userId, email, createdAt]
+      properties:
+        userId:
+          type: string
+          example: usr_8b31a2
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        fullName:
+          type: string
+          example: Nguyen Van A
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:00:00Z"
+
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, expiresInSeconds, user]
+      properties:
+        accessToken:
+          type: string
+          description: JWT Access Token (HMAC-SHA256)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresInSeconds:
+          type: integer
+          format: int64
+          example: 86400
+        user:
+          $ref: "#/components/schemas/UserSummary"
+
+    ErrorResponse:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:
+          type: string
+          example: EMAIL_ALREADY_EXISTS
+        message:
+          type: string
+          example: Địa chỉ email đã được sử dụng trên hệ thống
+        details:
+          type: array
+          items:
+            type: string
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:00:00Z"

@@ -1,0 +1,255 @@
+{
+  "info": {
+    "_postman_id": "tvc-f002-common-aws-cors-error",
+    "name": "F-002: Common, AWS Clients, CORS & Error Handling Foundation",
+    "description": "Luồng kiểm thử Postman cho Feature F-002: Nền tảng Common, AWS Clients, CORS & Xử lý lỗi chuẩn",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api",
+      "type": "string"
+    },
+    {
+      "key": "frontendOrigin",
+      "value": "http://localhost:5173",
+      "type": "string"
+    },
+    {
+      "key": "maliciousOrigin",
+      "value": "http://malicious-site.com",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health Check (Hệ thống sẵn sàng)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["actuator", "health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Trạng thái hệ thống là UP\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.status).to.eql(\"UP\");",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. OpenAPI v3 Specification Docs",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v3/api-docs",
+          "host": ["{{baseUrl}}"],
+          "path": ["v3", "api-docs"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Payload trả về OpenAPI hợp lệ\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.openapi).to.exist;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. CORS Preflight - Origin Hợp lệ (Frontend)",
+      "request": {
+        "method": "OPTIONS",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{frontendOrigin}}",
+            "type": "text"
+          },
+          {
+            "key": "Access-Control-Request-Method",
+            "value": "POST",
+            "type": "text"
+          },
+          {
+            "key": "Access-Control-Request-Headers",
+            "value": "Authorization,Content-Type,X-API-Key",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["actuator", "health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Header Access-Control-Allow-Origin đúng nguồn cấp phép\", function () {",
+              "    pm.expect(pm.response.headers.get(\"Access-Control-Allow-Origin\")).to.eql(pm.variables.get(\"frontendOrigin\"));",
+              "});",
+              "pm.test(\"Header Access-Control-Allow-Credentials là true\", function () {",
+              "    pm.expect(pm.response.headers.get(\"Access-Control-Allow-Credentials\")).to.eql(\"true\");",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. CORS Preflight - Chặn Origin Lạ (Disallowed)",
+      "request": {
+        "method": "OPTIONS",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{maliciousOrigin}}",
+            "type": "text"
+          },
+          {
+            "key": "Access-Control-Request-Method",
+            "value": "POST",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["actuator", "health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Không cấp header Access-Control-Allow-Origin cho origin lạ\", function () {",
+              "    pm.expect(pm.response.headers.get(\"Access-Control-Allow-Origin\")).to.be.null;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Xử lý lỗi 404 Chuẩn hóa (NOT_FOUND)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/non-existent-endpoint",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "non-existent-endpoint"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "pm.test(\"Body tuân thủ đúng ErrorResponse schema (NOT_FOUND)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.code).to.eql(\"NOT_FOUND\");",
+              "    pm.expect(jsonData.message).to.exist;",
+              "    pm.expect(jsonData.timestamp).to.exist;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Xử lý lỗi 405 Chuẩn hóa (METHOD_NOT_ALLOWED)",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 405 Method Not Allowed\", function () {",
+              "    pm.response.to.have.status(405);",
+              "});",
+              "pm.test(\"Body tuân thủ đúng ErrorResponse schema (METHOD_NOT_ALLOWED)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.code).to.eql(\"METHOD_NOT_ALLOWED\");",
+              "    pm.expect(jsonData.message).to.exist;",
+              "    pm.expect(jsonData.timestamp).to.exist;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Bảo mật 401 Chưa Xác thực (UNAUTHENTICATED)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

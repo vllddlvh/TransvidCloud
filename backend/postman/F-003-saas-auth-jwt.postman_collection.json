@@ -1,0 +1,298 @@
+{
+  "info": {
+    "_postman_id": "tvc-f003-saas-auth-jwt",
+    "name": "F-003: Xác thực người dùng SaaS — Register, Login & JWT Security",
+    "description": "Bộ kiểm thử Postman cho Feature F-003: Đăng ký, Đăng nhập, DynamoDB TransactWriteItems đảm bảo email duy nhất và xác thực Bearer JWT",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api",
+      "type": "string"
+    },
+    {
+      "key": "testEmail",
+      "value": "tester.f003@transvidcloud.io",
+      "type": "string"
+    },
+    {
+      "key": "testPassword",
+      "value": "SecretPassword123!",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Đăng ký tài khoản mới (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Phản hồi có accessToken hợp lệ\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+              "    pm.expect(jsonData.expiresInSeconds).to.be.above(0);",
+              "});",
+              "pm.test(\"Thông tin user có userId tiền tố usr_\", function () {",
+              "    pm.expect(jsonData.user.userId).to.match(/^usr_/);",
+              "    pm.expect(jsonData.user.email).to.eql(pm.collectionVariables.get('testEmail').toLowerCase());",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('accessToken', jsonData.accessToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"fullName\": \"Postman Automation User\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "2. Đăng ký trùng email -> Chặn 409 Conflict",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 409 Conflict\", function () {",
+              "    pm.response.to.have.status(409);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là EMAIL_ALREADY_EXISTS\", function () {",
+              "    pm.expect(jsonData.code).to.eql('EMAIL_ALREADY_EXISTS');",
+              "    pm.expect(jsonData.timestamp).to.be.a('string');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"  {{testEmail}}  \",\n  \"password\": \"AnotherSecret123!\",\n  \"fullName\": \"Duplicate User\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "3. Đăng ký dữ liệu không hợp lệ -> 400 Bad Request",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 400 Bad Request\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là VALIDATION_ERROR\", function () {",
+              "    pm.expect(jsonData.code).to.eql('VALIDATION_ERROR');",
+              "    pm.expect(jsonData.details).to.be.an('array');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"invalid-email-format\",\n  \"password\": \"short\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "4. Đăng nhập thành công (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Nhận JWT token hợp lệ\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+              "    pm.expect(jsonData.user.email).to.eql(pm.collectionVariables.get('testEmail').toLowerCase());",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('accessToken', jsonData.accessToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "5. Đăng nhập sai mật khẩu -> 401 Unauthorized",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là INVALID_CREDENTIALS\", function () {",
+              "    pm.expect(jsonData.code).to.eql('INVALID_CREDENTIALS');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"WrongPassword999!\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "6. Truy cập /auth/me với Bearer Token (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trích xuất đúng user profile từ token\", function () {",
+              "    pm.expect(jsonData.userId).to.match(/^usr_/);",
+              "    pm.expect(jsonData.email).to.eql(pm.collectionVariables.get('testEmail').toLowerCase());",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "me"]
+        }
+      }
+    },
+    {
+      "name": "7. Truy cập /auth/me không có token -> 401 Unauthorized",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "me"]
+        }
+      }
+    }
+  ]
+}

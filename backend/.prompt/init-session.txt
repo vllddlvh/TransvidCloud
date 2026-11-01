@@ -1,0 +1,18 @@
+Bắt đầu một development session cho TransvidCloud Backend App.
+
+Prompt này nhằm mục đích duy nhất là session-initialization cho coding agents. Chưa sửa bất cứ thứ gì, chỉ tập trung vào khởi tạo context.
+Cụ thể:
+
+1. Đọc `AGENTS.md` và tuân thủ các chỉ dẫn trong đó. Hiểu được cách sử dụng hai nhóm tài liệu gồm tài liệu về quy trình SDD và tài liệu về dự án.
+2. Đọc `session/session-start-checklist.md`.
+3. Đọc `PROGRESS.md`, `backlog/features.md` và các tài liệu Harness liên quan.
+4. Đọc `.harness/project-config.md` và `.harness/verify-commands.txt`.
+5. Kiểm tra Git branch và working tree.
+6. Xác nhận các lệnh verify thực tế của dự án. Không tự suy đoán hoặc thay đổi lệnh khi chưa có bằng chứng.
+
+Hãy báo cáo:
+- Project context đã nắm được.
+- Các tài liệu đã đọc.
+- Những điều đã xác nhận và những điều chưa rõ.
+- Trạng thái Git và trạng thái verify baseline.
+- Các ràng buộc cần tuân thủ khi thực hiện feature mới.

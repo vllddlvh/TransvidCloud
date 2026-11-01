@@ -10,9 +10,7 @@ Tên bảng: `tvc-{env}-{table}` (local: `tvc-local-*`). Billing: on-demand.
 | `videos` | `videoId` | `project-index` (PK `projectId`, SK `createdAt`) | Liệt kê video theo project; nguồn sự thật về trạng thái |
 
 ## Trường chính của `videos`
-`videoId`, `projectId`, `status`, `attemptCount`, `inputKey`, `assets` (map: `hls`, `hls360`, `hls720`, `thumbnail`), `errorCode`, `startedAt`, `completedAt`, `createdAt`, `updatedAt`.
-
-Ranh giới ghi: **API** tạo item và ghi `UPLOADING → PENDING`; **Worker** ghi `status` xử lý (`PROCESSING`/`COMPLETED`/`FAILED_*`), `attemptCount`, `assets`, `errorCode`, `startedAt`, `completedAt` — chi tiết trạng thái xem `video-state-machine.md`.
+`videoId`, `projectId`, `title`, `sizeBytes`, `contentType`, `status`, `attemptCount`, `inputKey`, `assets` (map S3 keys: `hls`, `hls360`, `hls720`, `thumbnail`), `errorCode`, `createdAt`, `updatedAt`, `startedAt`, `completedAt`.
 
 ## Lưu ý
 - Email duy nhất: dùng `TransactWriteItems` với item khóa `EMAIL#<email>` + `attribute_not_exists`.
