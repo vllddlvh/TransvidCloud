@@ -1,27 +1,40 @@
 package com.transvidcloud.backend.video.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.transvidcloud.backend.apikey.security.ApiKeyPrincipal;
 import com.transvidcloud.backend.common.config.TvcProperties;
 import com.transvidcloud.backend.common.exception.AppException;
 import com.transvidcloud.backend.common.exception.ErrorCode;
 import com.transvidcloud.backend.project.entity.ProjectItem;
 import com.transvidcloud.backend.project.repository.ProjectRepository;
+import com.transvidcloud.backend.video.dto.ConfirmVideoResult;
 import com.transvidcloud.backend.video.dto.InitVideoRequest;
 import com.transvidcloud.backend.video.dto.InitVideoResponse;
 import com.transvidcloud.backend.video.dto.PresignedUploadInfo;
+import com.transvidcloud.backend.video.dto.SqsJobMessage;
 import com.transvidcloud.backend.video.dto.VideoResponse;
+import com.transvidcloud.backend.video.entity.OutboxItem;
 import com.transvidcloud.backend.video.entity.VideoItem;
 import com.transvidcloud.backend.video.entity.VideoStatus;
 import com.transvidcloud.backend.video.mapper.VideoMapper;
+import com.transvidcloud.backend.video.repository.OutboxRepository;
 import com.transvidcloud.backend.video.repository.VideoRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
@@ -35,10 +48,20 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 @RequiredArgsConstructor
 public class VideoService {
 
+    private static final Set<String> FAILED_STATUSES = Set.of(
+            VideoStatus.FAILED_VALIDATION.name(),
+            VideoStatus.FAILED_TRANSCODE.name(),
+            VideoStatus.FAILED_STORAGE.name()
+    );
+
     private final VideoRepository videoRepository;
     private final ProjectRepository projectRepository;
     private final VideoMapper videoMapper;
     private final S3Presigner s3Presigner;
+    private final S3Client s3Client;
+    private final OutboxRepository outboxRepository;
+    private final OutboxPublisherService outboxPublisherService;
+    private final ObjectMapper objectMapper;
     private final TvcProperties tvcProperties;
 
     /**
@@ -167,5 +190,156 @@ public class VideoService {
                     projectId, userId, project.getOwnerId());
             throw new AppException(ErrorCode.ACCESS_DENIED);
         }
+    }
+
+    /**
+     * Xác nhận video đã upload lên S3, chuyển trạng thái nguyên tử UPLOADING -> PENDING
+     * kèm ghi OutboxItem và điều phối SQS Job.
+     * Thao tác có tính chất idempotent:
+     * - Lần đầu tiên thành công: trả về newlyConfirmed = true (HTTP 202 Accepted).
+     * - Gọi lặp khi video đã ở PENDING/PROCESSING/COMPLETED: trả về newlyConfirmed = false (HTTP 200 OK).
+     *
+     * @param videoId        Mã định danh video
+     * @param authentication Ngữ cảnh xác thực Spring Security
+     * @return ConfirmVideoResult chứa VideoResponse và cờ newlyConfirmed
+     */
+    public ConfirmVideoResult confirmVideoUpload(String videoId, Authentication authentication) {
+        // 1. Tra cứu bản ghi VideoItem
+        VideoItem video = videoRepository.findByVideoId(videoId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        // 2. Kiểm tra quyền sở hữu Project
+        validateProjectAccess(video.getProjectId(), authentication);
+
+        String currentStatus = video.getStatus();
+
+        // 3. Chặn nếu video ở trạng thái lỗi kết thúc chu trình
+        if (FAILED_STATUSES.contains(currentStatus)) {
+            log.warn("Từ chối confirm: video {} đang ở trạng thái lỗi {}", videoId, currentStatus);
+            throw new AppException(ErrorCode.INVALID_STATE_TRANSITION);
+        }
+
+        // 4. Xử lý Idempotent: nếu video đã ở PENDING, PROCESSING hoặc COMPLETED
+        if (VideoStatus.PENDING.name().equals(currentStatus)
+                || VideoStatus.PROCESSING.name().equals(currentStatus)
+                || VideoStatus.COMPLETED.name().equals(currentStatus)) {
+            log.info("Xác nhận lặp lại (Idempotent): videoId={}, status={}", videoId, currentStatus);
+
+            // Nếu OutboxItem vẫn còn ở PENDING (do lần gửi trước bị gián đoạn mạng), thử kích hoạt lại
+            outboxRepository.findByTargetVideoId(videoId).ifPresent(outbox -> {
+                if (OutboxItem.STATUS_PENDING.equals(outbox.getOutboxStatus())) {
+                    log.info("Thử phát lại Outbox còn tồn đọng cho videoId={}", videoId);
+                    outboxPublisherService.publishOutboxItem(outbox);
+                }
+            });
+
+            VideoResponse videoResponse = videoMapper.toVideoResponse(video);
+            return new ConfirmVideoResult(videoResponse, false);
+        }
+
+        // 5. Kiểm tra đối tượng trên S3 thông qua HeadObject
+        HeadObjectResponse headResponse = checkS3Object(video);
+        Long contentLength = headResponse.contentLength();
+
+        // 6. Chuẩn bị thông điệp SQS và bản ghi OutboxItem
+        String now = Instant.now().toString();
+        String jobId = VideoValidationHelper.generateJobId();
+
+        SqsJobMessage jobMessage = new SqsJobMessage(
+                jobId,
+                videoId,
+                video.getProjectId(),
+                video.getInputKey(),
+                now
+        );
+
+        String payload;
+        try {
+            payload = objectMapper.writeValueAsString(jobMessage);
+        } catch (JsonProcessingException e) {
+            log.error("Lỗi đóng gói JSON SqsJobMessage: {}", e.getMessage(), e);
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR);
+        }
+
+        OutboxItem outboxItem = OutboxItem.builder()
+                .videoId(OutboxItem.buildPk(videoId))
+                .projectId(OutboxItem.GSI_PARTITION_PENDING)
+                .createdAt(now)
+                .jobId(jobId)
+                .targetVideoId(videoId)
+                .targetProjectId(video.getProjectId())
+                .inputKey(video.getInputKey())
+                .payload(payload)
+                .outboxStatus(OutboxItem.STATUS_PENDING)
+                .attemptCount(0)
+                .updatedAt(now)
+                .build();
+
+        video.setStatus(VideoStatus.PENDING.name());
+        video.setSizeBytes(contentLength);
+        video.setUpdatedAt(now);
+
+        // 7. Thực thi giao dịch nguyên tử TransactWriteItems
+        try {
+            videoRepository.confirmVideoWithOutboxInTransaction(video, outboxItem);
+        } catch (TransactionCanceledException ex) {
+            log.warn("Xung đột đồng thời khi confirm: videoId={}, nạp lại trạng thái mới nhất", videoId);
+            VideoItem latestVideo = videoRepository.findByVideoId(videoId)
+                    .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+
+            if (VideoStatus.UPLOADING.name().equals(latestVideo.getStatus())) {
+                throw ex;
+            }
+            return new ConfirmVideoResult(videoMapper.toVideoResponse(latestVideo), false);
+        }
+
+        // 8. Fast-path: Phát hành tức thì lên SQS
+        outboxPublisherService.publishOutboxItem(outboxItem);
+
+        log.info("Xác nhận upload thành công: videoId={}, projectId={}, jobId={}, sizeBytes={}",
+                videoId, video.getProjectId(), jobId, contentLength);
+
+        VideoResponse videoResponse = videoMapper.toVideoResponse(video);
+        return new ConfirmVideoResult(videoResponse, true);
+    }
+
+    /**
+     * Kiểm tra tính tồn tại và giới hạn dung lượng đối tượng tệp trên S3.
+     */
+    private HeadObjectResponse checkS3Object(VideoItem video) {
+        String inputBucket = tvcProperties.getAws().getS3().getInputBucket();
+        HeadObjectRequest headRequest = HeadObjectRequest.builder()
+                .bucket(inputBucket)
+                .key(video.getInputKey())
+                .build();
+
+        HeadObjectResponse headResponse;
+        try {
+            headResponse = s3Client.headObject(headRequest);
+        } catch (NoSuchKeyException ex) {
+            log.warn("Tệp đối tượng không tồn tại trên S3: bucket={}, key={}", inputBucket, video.getInputKey());
+            throw new AppException(ErrorCode.S3_OBJECT_NOT_FOUND);
+        } catch (S3Exception ex) {
+            if (ex.statusCode() == 404) {
+                log.warn("S3 trả về 404 cho key={}", video.getInputKey());
+                throw new AppException(ErrorCode.S3_OBJECT_NOT_FOUND);
+            }
+            log.error("Lỗi khi gọi S3 HeadObject: key={}, error={}", video.getInputKey(), ex.getMessage(), ex);
+            throw ex;
+        }
+
+        Long contentLength = headResponse.contentLength();
+        if (contentLength == null || contentLength <= 0) {
+            log.warn("Tệp trên S3 có kích thước không hợp lệ (0 byte): key={}", video.getInputKey());
+            throw new AppException(ErrorCode.UPLOAD_SIZE_MISMATCH);
+        }
+
+        if (contentLength > tvcProperties.getUpload().getMaxBytes()) {
+            log.warn("Tệp trên S3 vượt quá dung lượng tối đa (200MB): size={}, max={}",
+                    contentLength, tvcProperties.getUpload().getMaxBytes());
+            throw new AppException(ErrorCode.UPLOAD_LIMIT_EXCEEDED);
+        }
+
+        return headResponse;
     }
 }

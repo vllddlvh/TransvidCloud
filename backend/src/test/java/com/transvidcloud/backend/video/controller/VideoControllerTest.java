@@ -13,6 +13,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.transvidcloud.backend.common.exception.AppException;
 import com.transvidcloud.backend.common.exception.ErrorCode;
 import com.transvidcloud.backend.common.exception.GlobalExceptionHandler;
+import com.transvidcloud.backend.video.dto.ConfirmVideoResult;
 import com.transvidcloud.backend.video.dto.InitVideoRequest;
 import com.transvidcloud.backend.video.dto.InitVideoResponse;
 import com.transvidcloud.backend.video.dto.PresignedUploadInfo;
@@ -185,5 +186,138 @@ class VideoControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code", is("RESOURCE_NOT_FOUND")));
+    }
+
+    // ==========================================
+    // Tests cho POST /videos/{videoId}/confirm (F-007)
+    // ==========================================
+
+    private VideoResponse createTestVideoResponse(String videoId, VideoStatus status) {
+        return new VideoResponse(
+                videoId,
+                projectId,
+                "Demo Video",
+                status,
+                52428800L,
+                "video/mp4",
+                0,
+                null,
+                null,
+                Instant.now(),
+                Instant.now(),
+                null,
+                null
+        );
+    }
+
+    @Test
+    @DisplayName("POST /videos/{videoId}/confirm: Thành công lần đầu trả về HTTP 202 Accepted")
+    void testConfirmVideoUpload_NewlyConfirmed_Returns202() throws Exception {
+        String videoId = "vid_4a77e1c8d102";
+        VideoResponse videoResponse = createTestVideoResponse(videoId, VideoStatus.PENDING);
+        ConfirmVideoResult result = new ConfirmVideoResult(videoResponse, true);
+
+        when(videoService.confirmVideoUpload(eq(videoId), any())).thenReturn(result);
+
+        mockMvc.perform(post("/videos/{videoId}/confirm", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.videoId", is(videoId)))
+                .andExpect(jsonPath("$.status", is("PENDING")))
+                .andExpect(jsonPath("$.sizeBytes", is(52428800)));
+    }
+
+    @Test
+    @DisplayName("POST /videos/{videoId}/confirm: Gọi lặp Idempotent trả về HTTP 200 OK")
+    void testConfirmVideoUpload_Idempotent_Returns200() throws Exception {
+        String videoId = "vid_4a77e1c8d102";
+        VideoResponse videoResponse = createTestVideoResponse(videoId, VideoStatus.PENDING);
+        ConfirmVideoResult result = new ConfirmVideoResult(videoResponse, false);
+
+        when(videoService.confirmVideoUpload(eq(videoId), any())).thenReturn(result);
+
+        mockMvc.perform(post("/videos/{videoId}/confirm", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.videoId", is(videoId)))
+                .andExpect(jsonPath("$.status", is("PENDING")));
+    }
+
+    @Test
+    @DisplayName("POST /videos/{videoId}/confirm: Tệp S3 không tồn tại trả về HTTP 422 S3_OBJECT_NOT_FOUND")
+    void testConfirmVideoUpload_S3NotFound_Returns422() throws Exception {
+        String videoId = "vid_4a77e1c8d102";
+        when(videoService.confirmVideoUpload(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.S3_OBJECT_NOT_FOUND));
+
+        mockMvc.perform(post("/videos/{videoId}/confirm", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code", is("S3_OBJECT_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("POST /videos/{videoId}/confirm: Tệp S3 rỗng 0 byte trả về HTTP 422 UPLOAD_SIZE_MISMATCH")
+    void testConfirmVideoUpload_UploadSizeMismatch_Returns422() throws Exception {
+        String videoId = "vid_4a77e1c8d102";
+        when(videoService.confirmVideoUpload(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.UPLOAD_SIZE_MISMATCH));
+
+        mockMvc.perform(post("/videos/{videoId}/confirm", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code", is("UPLOAD_SIZE_MISMATCH")));
+    }
+
+    @Test
+    @DisplayName("POST /videos/{videoId}/confirm: Tệp S3 vượt 200MB trả về HTTP 413 UPLOAD_LIMIT_EXCEEDED")
+    void testConfirmVideoUpload_UploadLimitExceeded_Returns413() throws Exception {
+        String videoId = "vid_4a77e1c8d102";
+        when(videoService.confirmVideoUpload(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.UPLOAD_LIMIT_EXCEEDED));
+
+        mockMvc.perform(post("/videos/{videoId}/confirm", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code", is("UPLOAD_LIMIT_EXCEEDED")));
+    }
+
+    @Test
+    @DisplayName("POST /videos/{videoId}/confirm: Không có quyền truy cập Project trả về HTTP 403 Forbidden")
+    void testConfirmVideoUpload_AccessDenied_Returns403() throws Exception {
+        String videoId = "vid_4a77e1c8d102";
+        when(videoService.confirmVideoUpload(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.ACCESS_DENIED));
+
+        mockMvc.perform(post("/videos/{videoId}/confirm", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code", is("ACCESS_DENIED")));
+    }
+
+    @Test
+    @DisplayName("POST /videos/{videoId}/confirm: Video không tồn tại trả về HTTP 404 RESOURCE_NOT_FOUND")
+    void testConfirmVideoUpload_VideoNotFound_Returns404() throws Exception {
+        String videoId = "vid_unknown";
+        when(videoService.confirmVideoUpload(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(post("/videos/{videoId}/confirm", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("RESOURCE_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("POST /videos/{videoId}/confirm: Video ở trạng thái FAILED_* trả về HTTP 409 INVALID_STATE_TRANSITION")
+    void testConfirmVideoUpload_InvalidStateTransition_Returns409() throws Exception {
+        String videoId = "vid_failed";
+        when(videoService.confirmVideoUpload(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.INVALID_STATE_TRANSITION));
+
+        mockMvc.perform(post("/videos/{videoId}/confirm", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code", is("INVALID_STATE_TRANSITION")));
     }
 }

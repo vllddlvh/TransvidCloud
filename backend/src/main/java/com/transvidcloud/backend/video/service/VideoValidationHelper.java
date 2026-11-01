@@ -13,6 +13,7 @@ import java.util.Set;
 public final class VideoValidationHelper {
 
     public static final String VIDEO_ID_PREFIX = "vid_";
+    public static final String JOB_ID_PREFIX = "job_";
     public static final Set<String> ALLOWED_EXTENSIONS = Set.of("mp4", "mov", "mkv", "webm");
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -28,6 +29,15 @@ public final class VideoValidationHelper {
         byte[] bytes = new byte[6]; // 6 bytes = 12 hex characters
         SECURE_RANDOM.nextBytes(bytes);
         return VIDEO_ID_PREFIX + HexFormat.of().formatHex(bytes);
+    }
+
+    /**
+     * Sinh jobId ngẫu nhiên an toàn theo quy ước: job_ + 12 ký tự hex.
+     */
+    public static String generateJobId() {
+        byte[] bytes = new byte[6]; // 6 bytes = 12 hex characters
+        SECURE_RANDOM.nextBytes(bytes);
+        return JOB_ID_PREFIX + HexFormat.of().formatHex(bytes);
     }
 
     /**

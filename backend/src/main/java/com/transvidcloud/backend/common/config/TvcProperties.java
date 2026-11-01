@@ -39,6 +39,10 @@ public class TvcProperties {
     @NotNull
     private MediaProperties media = new MediaProperties();
 
+    @Valid
+    @NotNull
+    private OutboxProperties outbox = new OutboxProperties();
+
     @Getter
     @Setter
     public static class AwsProperties {
@@ -139,5 +143,17 @@ public class TvcProperties {
     public static class MediaProperties {
         @NotBlank
         private String baseUrl = "/media";
+    }
+
+    @Getter
+    @Setter
+    public static class OutboxProperties {
+        private boolean enabled = true;
+
+        @Min(500)
+        private long pollIntervalMs = 5000L;
+
+        @Min(1)
+        private int batchSize = 10;
     }
 }

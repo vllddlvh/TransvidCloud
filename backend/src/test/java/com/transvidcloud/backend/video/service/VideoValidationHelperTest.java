@@ -31,6 +31,21 @@ class VideoValidationHelperTest {
     }
 
     @Test
+    @DisplayName("generateJobId: phải sinh chuỗi có tiền tố job_ và đúng 16 ký tự tổng cộng (job_ + 12 hex)")
+    void testGenerateJobIdFormat() {
+        String id1 = VideoValidationHelper.generateJobId();
+        String id2 = VideoValidationHelper.generateJobId();
+
+        assertNotNull(id1);
+        assertTrue(id1.startsWith("job_"));
+        assertEquals(16, id1.length());
+        assertTrue(id1.matches("^job_[0-9a-f]{12}$"));
+
+        // Tính ngẫu nhiên không trùng lặp
+        assertNotEquals(id1, id2);
+    }
+
+    @Test
     @DisplayName("extractExtension: trích xuất phần mở rộng chuẩn hóa chữ thường và xử lý tên tệp nhiều dấu chấm")
     void testExtractExtension() {
         assertEquals("mp4", VideoValidationHelper.extractExtension("sample.mp4"));

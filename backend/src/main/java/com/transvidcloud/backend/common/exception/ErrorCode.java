@@ -33,12 +33,15 @@ public enum ErrorCode {
     CONFLICT("CONFLICT", "Trạng thái tài nguyên xung đột với yêu cầu thao tác", HttpStatus.CONFLICT),
     EMAIL_ALREADY_EXISTS("EMAIL_ALREADY_EXISTS", "Địa chỉ email đã được sử dụng trên hệ thống", HttpStatus.CONFLICT),
     RESOURCE_IN_USE("RESOURCE_IN_USE", "Tài nguyên đang được sử dụng hoặc có tiến trình xử lý chưa hoàn tất", HttpStatus.CONFLICT),
+    INVALID_STATE_TRANSITION("INVALID_STATE_TRANSITION", "Trạng thái video hiện tại không cho phép thực hiện thao tác này", HttpStatus.CONFLICT),
 
     // 413 Payload Too Large
     UPLOAD_LIMIT_EXCEEDED("UPLOAD_LIMIT_EXCEEDED", "Dung lượng tải lên vượt quá giới hạn tối đa cho phép", HttpStatus.PAYLOAD_TOO_LARGE),
 
     // 422 Unprocessable Entity
     UNSUPPORTED_MEDIA_TYPE("UNSUPPORTED_MEDIA_TYPE", "Định dạng phương tiện hoặc nội dung không được hỗ trợ", HttpStatus.UNPROCESSABLE_ENTITY),
+    S3_OBJECT_NOT_FOUND("S3_OBJECT_NOT_FOUND", "Tệp đối tượng chưa tồn tại trên hệ thống lưu trữ S3", HttpStatus.UNPROCESSABLE_ENTITY),
+    UPLOAD_SIZE_MISMATCH("UPLOAD_SIZE_MISMATCH", "Dung lượng tệp tải lên không hợp lệ hoặc rỗng", HttpStatus.UNPROCESSABLE_ENTITY),
 
     // 500 Internal Server Error
     INTERNAL_SERVER_ERROR("INTERNAL_SERVER_ERROR", "Đã xảy ra sự cố nội bộ trong hệ thống. Vui lòng thử lại sau", HttpStatus.INTERNAL_SERVER_ERROR);
