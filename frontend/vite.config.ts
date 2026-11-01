@@ -8,11 +8,21 @@ export default defineConfig(({ mode, command }) => {
   const productionBuild = command === 'build' && !mockBuild
   const env = loadEnv(mode, process.cwd(), '')
   const configuredMode = process.env.VITE_API_MODE ?? env.VITE_API_MODE
+  const devProxy = (process.env.VITE_DEV_PROXY ?? env.VITE_DEV_PROXY) === 'true'
   if (productionBuild && configuredMode !== 'real') {
     throw new Error('Production builds must set VITE_API_MODE=real. Use npm run build:mock for the demo build.')
   }
   return {
     plugins: [react()],
+    server: {
+      allowedHosts: true,
+      ...(devProxy ? {
+        proxy: {
+          '/api': { target: 'http://localhost:8080', changeOrigin: true },
+          '/media': { target: 'http://localhost:8000', changeOrigin: true },
+        },
+      } : {}),
+    },
     resolve: {
       alias: {
         '@app/mock-runtime': fileURLToPath(new URL(

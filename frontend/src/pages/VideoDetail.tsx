@@ -30,7 +30,7 @@ export function VideoDetail() {
   const copyStreamingLink = () => video.assets
     && copy(new URL(video.assets.hls, window.location.origin).href, 'Streaming link copied.')
   const copyEmbed = () => copy(
-    `<iframe src="${window.location.origin}/embed?video=${video.videoId}" width="640" height="360" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen frameborder="0"></iframe>`,
+    `<iframe src="${window.location.origin}/embed?video=${encodeURIComponent(video.videoId)}&project=${encodeURIComponent(video.projectId)}" width="640" height="360" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen frameborder="0"></iframe>`,
     'Embed code copied.',
   )
   return <>

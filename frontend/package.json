@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
+    "dev:real": "VITE_API_MODE=real VITE_DEV_PROXY=true vite --host 0.0.0.0 --port 5173 --strictPort",
     "build": "tsc -b && vite build && node scripts/check-production-bundle.mjs",
     "build:mock": "tsc -b && vite build --mode mock",
     "preview": "vite preview --host 0.0.0.0",

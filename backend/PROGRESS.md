@@ -4,52 +4,49 @@
 
 ## Cập nhật
 
-- Thời điểm: `2026-11-01T18:25:00+07:00`
-- Branch: `phuong-backend`
+- Thời điểm: `2026-11-01T20:52:00+07:00`
+- Branch: `phuong-integration`
 
 ## Trạng thái tổng quan
 
-- Current focus: `F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract (Epic A5/A8/C5)` (Hoàn tất & Đóng feature)
-- Feature spec F-009: [`specs/009-observability-integration-tests/spec.md`](specs/009-observability-integration-tests/spec.md)
-- Checklist F-009: [`specs/009-observability-integration-tests/checklists/requirements.md`](specs/009-observability-integration-tests/checklists/requirements.md)
-- Feature vừa hoàn thành: `F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract` (completed)
-- Evidence F-009: [`quality/evidence/F-009-observability-integration-tests.md`](quality/evidence/F-009-observability-integration-tests.md)
-- Status: `completed`
+- Current focus: `Tích hợp toàn hệ thống (Backend – Worker – Frontend) trên LocalStack & Đóng gói bàn giao Cloud`
+- Feature MVP (F-001 -> F-009): `completed`
+- Full-Stack Integration (BE + FE + Worker + Nginx + LocalStack): `verified`
+- Tài liệu hướng dẫn Setup & Tự Test: [`../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md`](../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md)
 
-## Kết quả đạt được của F-009
+## Kết quả đạt được trong phiên Tích hợp (Full-Stack Integration)
 
-1. **Structured Logging & Correlation Tracking (US1)**:
-   - Triển khai `LogContext` và `CorrelationIdFilter` (`Ordered.HIGHEST_PRECEDENCE`) tự động tiếp nhận hoặc tạo mới `X-Correlation-ID` (hoặc fallback `X-Request-ID`), làm sạch ký tự bẩn, gán vào Logback MDC và trả về trong HTTP response header.
-   - Làm giàu ngữ cảnh nghiệp vụ (`userId`, `projectId`, `videoId`) xuyên suốt `VideoService`, `ProjectService`, `ApiKeyService` và `GlobalExceptionHandler`.
-   - `OutboxRelayScheduler` tự sinh correlation ID dạng `sched-outbox-...` cho các tác vụ nền không có HTTP request.
-2. **Log Masking & Security (US2)**:
-   - Cơ chế phòng thủ theo chiều sâu (Defense-in-Depth): Loại trừ trường nhạy cảm trong DTO `toString()` (`RegisterRequest`, `LoginRequest`, `ApiKeyCreatedResponse`, `@ToString(exclude = "passwordHash")` trên `UserItem`).
-   - Xây dựng `MaskingMessageConverter` và `StructuredLoggingLayout` kết hợp `logback-spring.xml` tự động quét regex và che giấu `password`, `rawApiKey`, `Bearer token`, `aws_secret_access_key` thành `[PROTECTED]`, và loại bỏ toàn bộ query string chứa chữ ký S3 Presigned URL (`X-Amz-Signature`).
-   - Hỗ trợ biến môi trường `LOG_FORMAT=text` (màu có cấu trúc) hoặc `LOG_FORMAT=json` (single-line JSON).
-3. **Full-Lifecycle Integration & Contract Tests (US3)**:
-   - Xây dựng `ObservabilityLoggingIT` kiểm chứng trích xuất header correlation, MDC enrichment, và log masking an toàn.
-   - Xây dựng `VideoFullLifecycleIT` chạy trên môi trường đám mây giả lập Testcontainers LocalStack (DynamoDB, S3, SQS): kiểm chứng chuỗi trọn vẹn Auth -> Project -> API Key -> Upload Init -> S3 Upload -> Confirm -> SQS Dispatch -> Worker Emulation -> Query Detail/List.
-   - Thẩm định 100% tính tương thích của message SQS nhận được với hợp đồng `docs/contracts/sqs-job-message.schema.json` v1 (`jobId`, `videoId`, `projectId`, `inputKey`, `requestedAt`, `schemaVersion = 1`).
-   - Thẩm định Multi-tenancy Isolation (Tenant B cố tình dùng JWT hoặc API Key truy cập tài nguyên Tenant A đều bị chặn đứng với 403 `ACCESS_DENIED`).
-   - Thẩm định xung đột trạng thái: Chặn xóa video khi `PROCESSING` với 409 `INVALID_STATE_TRANSITION`, cho phép Fast Delete khi `COMPLETED` với 204 No Content.
-
-## Việc còn lại
-
-- Chuẩn bị kế hoạch và kích hoạt Feature tiếp theo theo roadmap: `F-010: Thông báo Webhook khi hoàn tất xử lý Video (Epic A7 — P1)`.
+1. **Dockerization & Hạ tầng Local (`docker-compose.yml`, `backend/Dockerfile`, `local/nginx/default.conf`):**
+   - Tạo `backend/Dockerfile` (multi-stage build `eclipse-temurin:21-jdk-alpine` -> `21-jre-alpine`, non-root user, healthcheck `/api/actuator/health`) và `backend/.dockerignore`.
+   - Khắc phục cấu hình `docker-compose.yml`, `.env.example`, `application.yml` và `OutboxPublisherService.java` để tương thích đồng thời biến môi trường `TVC_*` và `S3_*`/`SQS_*` (hỗ trợ cả Queue Name và Queue URL).
+   - Sửa lỗi phân giải `host.docker.internal` trong `local/nginx/default.conf` trên Linux.
+2. **Đồng bộ Backend ↔ Worker:**
+   - Cập nhật `VideoMapper.java` hỗ trợ đọc key `"hls"` (cùng `"masterPlaylistUrl"`, `"masterPlaylist"`) từ DynamoDB `assets` map do Worker ghi.
+   - Cập nhật `worker/internal/consumer/consumer.go` gửi kèm `AttributeNames: [All]` và fallback `Attempt = 1` để tương thích `ApproximateReceiveCount` trên LocalStack 3.0.
+3. **Đồng bộ Backend (SSOT `/contracts/openapi.yaml`) ↔ Frontend & E2E Script:**
+   - Đồng bộ `/docs/contracts/openapi.yaml` theo `/contracts/openapi.yaml` của Backend và tái sinh `frontend/src/api/schema.d.ts` (`npm run api:check` PASS).
+   - Cập nhật `frontend/src/api/types.ts` và `frontend/src/api/client.ts` chuẩn hóa đầy đủ wire format của Backend (`AuthResponse`, `ProjectResponse`, `InitVideoRequest`, `InitVideoResponse`, `VideoResponse`, `VideoAssets`, `ErrorResponse`).
+   - Bổ sung tính năng **Create account (Register)** trên giao diện `Login.tsx`, hỗ trợ `npm run dev:real`, và xử lý trang nhúng `/embed?video=...&project=...` không cần mở public auth trên Backend.
+   - Cập nhật `tests/e2e/run.sh` (chế độ `api` và `worker`) khớp 100% với contract Backend.
+4. **Tài liệu Hướng dẫn Setup & Tự Test:**
+   - Xuất bản tài liệu [`docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md`](../docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md) hướng dẫn chi tiết cách dựng hệ thống, tự kiểm thử trên trình duyệt & CLI, và checklist bàn giao cho đội Cloud.
 
 ## Blocker / Quyết định cần con người
 
-- Không có blocker. Tất cả các tính năng P0 của dự án (từ F-001 đến F-009) đã hoàn thành, kiểm chứng và đóng thành công.
+- Không có blocker. Toàn bộ 7 cổng kiểm định (Quality Gates) đã PASS 100%.
 
 ## Verification gần nhất
 
 | Lệnh | Kết quả | Thời điểm | Evidence |
 |---|---|---|---|
-| `./mvnw -B test -Dtest=ObservabilityLoggingIT,VideoFullLifecycleIT` | `PASS` (6/6 tests pass, 0 failures, 0 errors) | `2026-11-01T18:18:56+07:00` | Kiểm thử tích hợp Testcontainers LocalStack đạt 100% |
-| `./scripts/verify.sh` (`./mvnw -B clean verify`) | `PASS` (100% test suite pass, 24 IT tests, 100+ unit tests, 0 failures) | `2026-11-01T18:22:19+07:00` | Đạt Zero Regression tuyệt đối trên toàn bộ dự án |
-| `./scripts/check-setup.sh` | `PASS` (10/10 checks passed) | `2026-11-01T18:20:00+07:00` | Harness structure check hoàn chỉnh |
+| `make up` & `make smoke` | `PASS` (4 containers healthy/running, 9/9 smoke checks OK) | `2026-11-01T20:34:47+07:00` | `http://localhost:8080/api/actuator/health` & `:8000` -> `UP` |
+| `make e2e` (`bash ./tests/e2e/run.sh api`) | `PASS` (Register -> Project -> S3 PUT -> Confirm -> Worker -> HLS 360p/720p & Thumbnail) | `2026-11-01T20:36:00+07:00` | Hoàn tất E2E API A4 trong 4s |
+| `make e2e-worker` (`bash ./tests/e2e/run.sh worker`) | `PASS` (Worker FFmpeg HLS + Thumbnail + DDB + SQS ACK) | `2026-11-01T20:38:49+07:00` | Worker integration E2E đạt 100% |
+| `E2E_REAL_STACK=1 E2E_BASE_URL=http://localhost:8000 npx playwright test e2e/real-stack.spec.ts` | `PASS` (1 passed in 8.6s trên Chrome thật) | `2026-11-01T20:48:03+07:00` | UI Register -> Project -> Upload -> HLS Playback -> Embed -> `FAILED_VALIDATION` |
+| `cd frontend && npm run api:check && npm test && npm run build` | `PASS` (13 test files, 136 tests pass, production bundle OK) | `2026-11-01T20:29:57+07:00` | Frontend unit/contract tests & build PASS |
+| `cd worker && go test ./...` | `PASS` (10/10 Go packages pass) | `2026-11-01T20:39:50+07:00` | Worker unit tests PASS |
+| `cd backend && ./scripts/verify.sh` (`./mvnw -B clean verify`) | `PASS` (100% unit tests + 24 Testcontainers IT pass) | `2026-11-01T20:51:10+07:00` | Zero Regression trên Backend |
 
 ## Hành động tiếp theo
 
-- Bàn giao session sạch (Clean Handoff) cho Feature F-009.
-- Chuyển sang Feature F-010 khi người dùng yêu cầu.
+- Người dùng trải nghiệm/tự test theo hướng dẫn tại `docs/LOCAL_INTEGRATION_AND_TEST_GUIDE.md` và bàn giao cho đội Cloud.

@@ -47,6 +47,9 @@ func (r *SQSReceiver) Receive(ctx context.Context) (*Message, error) {
 		QueueUrl:            aws.String(r.queueURL),
 		MaxNumberOfMessages: 1,
 		WaitTimeSeconds:     20,
+		AttributeNames: []types.QueueAttributeName{
+			types.QueueAttributeNameAll,
+		},
 		MessageSystemAttributeNames: []types.MessageSystemAttributeName{
 			types.MessageSystemAttributeNameApproximateReceiveCount,
 		},
@@ -68,6 +71,9 @@ func (r *SQSReceiver) Receive(ctx context.Context) (*Message, error) {
 	}
 	if s, ok := m.Attributes["ApproximateReceiveCount"]; ok {
 		msg.Attempt, _ = strconv.Atoi(s)
+	}
+	if msg.Attempt <= 0 {
+		msg.Attempt = 1
 	}
 	return msg, nil
 }

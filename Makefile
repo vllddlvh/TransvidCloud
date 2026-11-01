@@ -34,7 +34,10 @@ chaos: ## Chaos worker (mặc định trong container: SIGTERM/SIGKILL/DLQ/compe
 
 test: ## Unit test các module đã có code
 	@if [ -f backend/mvnw ]; then (cd backend && ./mvnw -q test); else echo "backend: chưa có code, bỏ qua"; fi
-	@if [ -f worker/go.mod ]; then (cd worker && go test ./...); else echo "worker: chưa có code, bỏ qua"; fi
+	@if [ -f worker/go.mod ]; then \
+		if command -v go >/dev/null 2>&1; then (cd worker && go test -v ./...); \
+		else docker run --rm -v "$$(pwd)/worker:/src" -w /src golang:1.24-bookworm go test ./...; fi; \
+	else echo "worker: chưa có code, bỏ qua"; fi
 	@if [ -f frontend/package.json ]; then (cd frontend && npm test --if-present); else echo "frontend: chưa có code, bỏ qua"; fi
 
 e2e: ## E2E qua API thật (A4; cần backend + worker đang chạy)

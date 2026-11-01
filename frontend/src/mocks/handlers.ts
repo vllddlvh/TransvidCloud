@@ -37,11 +37,12 @@ function loadState(): MockState {
   } catch { /* Unavailable/corrupt storage starts a fresh demo. */ }
   return { version: 1, ...createFixtures(), sessions: [], uploads: [] }
 }
-async function readBody(request: Request, fields: readonly string[]): Promise<Record<string, unknown>> {
+async function readBody(request: Request, fields: readonly string[], optionalFields: readonly string[] = []): Promise<Record<string, unknown>> {
   let body: unknown
   try { body = await request.json() } catch { fail(400, 'INVALID_JSON', 'A valid JSON request body is required.') }
   if (!isRecord(body)) fail(400, 'INVALID_REQUEST', 'The request body must be an object.')
-  if (Object.keys(body).some((key) => !fields.includes(key)) || fields.some((key) => !(key in body))) {
+  const allowed = new Set([...fields, ...optionalFields])
+  if (Object.keys(body).some((key) => !allowed.has(key)) || fields.some((key) => !(key in body))) {
     fail(422, 'VALIDATION_ERROR', 'The request contains missing or unexpected fields.')
   }
   return body
@@ -129,6 +130,25 @@ export function createHandlers() {
   return [
     http.get('*/media/*', ({ request }) =>
       mediaResponse(new URL(request.url).pathname) ?? new HttpResponse(null, { status: 404 })),
+    http.post('*/api/auth/register', route(async (request) => {
+      const body = await readBody(request, ['email', 'password'], ['fullName'])
+      if (typeof body.email !== 'string' || typeof body.password !== 'string'
+        || body.email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())
+        || body.password.length < 8 || body.password.length > 72) {
+        fail(400, 'VALIDATION_ERROR', 'Enter a valid email and password (at least 8 characters).')
+      }
+      const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString()
+      const accessToken = [
+        base64Url({ alg: 'MOCK', typ: 'JWT' }),
+        base64Url({ sub: DEMO_USER.userId, exp: Math.ceil(Date.parse(expiresAt) / 1000), iat: Math.floor(Date.now() / 1000), mock: true, jti: crypto.randomUUID() }),
+        crypto.randomUUID().replace(/-/g, ''),
+      ].join('.')
+      const name = typeof body.fullName === 'string' && body.fullName.trim() ? body.fullName.trim() : body.email.trim().split('@')[0]
+      const session: Session = { accessToken, expiresAt, user: { userId: DEMO_USER.userId, email: body.email.trim(), name } }
+      state.sessions.push(session)
+      persist()
+      return HttpResponse.json(session, { status: 201 })
+    }, false)),
     http.post('*/api/auth/login', route(async (request) => {
       const body = await readBody(request, ['email', 'password'])
       if (typeof body.email !== 'string' || typeof body.password !== 'string'
@@ -173,7 +193,7 @@ export function createHandlers() {
     })),
     http.post('*/api/projects/:projectId/videos', route(async (request, params) => {
       const project = projectById(params.projectId)
-      const body = await readBody(request, ['filename', 'sizeBytes', 'contentType'])
+      const body = await readBody(request, ['filename', 'sizeBytes', 'contentType'], ['title'])
       if (typeof body.filename !== 'string' || !body.filename.trim() || body.filename.length > 255
         || /[/\\\x00-\x1f]/.test(body.filename) || typeof body.contentType !== 'string'
         || typeof body.sizeBytes !== 'number' || !Number.isSafeInteger(body.sizeBytes) || body.sizeBytes <= 0) {

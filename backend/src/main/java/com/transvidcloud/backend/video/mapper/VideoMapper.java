@@ -55,7 +55,7 @@ public abstract class VideoMapper {
                 ? tvcProperties.getMedia().getBaseUrl()
                 : "/media";
 
-        String master = getAssetValue(rawAssets, "masterPlaylistUrl", "masterPlaylist");
+        String master = getAssetValue(rawAssets, "masterPlaylistUrl", "masterPlaylist", "hls");
         String hls360 = getAssetValue(rawAssets, "hls360Url", "hls360");
         String hls720 = getAssetValue(rawAssets, "hls720Url", "hls720");
         String thumb = getAssetValue(rawAssets, "thumbnailUrl", "thumbnail");
@@ -68,11 +68,13 @@ public abstract class VideoMapper {
         );
     }
 
-    private String getAssetValue(Map<String, String> map, String primaryKey, String secondaryKey) {
-        if (map.containsKey(primaryKey)) {
-            return map.get(primaryKey);
+    private String getAssetValue(Map<String, String> map, String... keys) {
+        for (String key : keys) {
+            if (map.containsKey(key) && map.get(key) != null) {
+                return map.get(key);
+            }
         }
-        return map.get(secondaryKey);
+        return null;
     }
 
     private String prependBaseUrl(String baseUrl, String relativePath) {

@@ -64,9 +64,12 @@ public class OutboxPublisherService {
     }
 
     /**
-     * Tra cứu và cache Queue URL từ Queue Name để tối ưu hóa hiệu năng.
+     * Tra cứu và cache Queue URL từ Queue Name (hoặc dùng trực tiếp nếu đã là URL) để tối ưu hóa hiệu năng.
      */
     private String resolveQueueUrl(String queueName) {
+        if (queueName.startsWith("http://") || queueName.startsWith("https://")) {
+            return queueName;
+        }
         return queueUrlCache.computeIfAbsent(queueName, qName -> {
             GetQueueUrlRequest request = GetQueueUrlRequest.builder().queueName(qName).build();
             return sqsAsyncClient.getQueueUrl(request).join().queueUrl();
