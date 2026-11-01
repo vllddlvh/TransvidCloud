@@ -9,19 +9,24 @@ import com.transvidcloud.backend.common.exception.ErrorCode;
 import com.transvidcloud.backend.project.entity.ProjectItem;
 import com.transvidcloud.backend.project.repository.ProjectRepository;
 import com.transvidcloud.backend.video.dto.ConfirmVideoResult;
+import com.transvidcloud.backend.video.dto.CursorCodec;
 import com.transvidcloud.backend.video.dto.InitVideoRequest;
 import com.transvidcloud.backend.video.dto.InitVideoResponse;
 import com.transvidcloud.backend.video.dto.PresignedUploadInfo;
 import com.transvidcloud.backend.video.dto.SqsJobMessage;
+import com.transvidcloud.backend.video.dto.VideoCursor;
+import com.transvidcloud.backend.video.dto.VideoPageResponse;
 import com.transvidcloud.backend.video.dto.VideoResponse;
 import com.transvidcloud.backend.video.entity.OutboxItem;
 import com.transvidcloud.backend.video.entity.VideoItem;
 import com.transvidcloud.backend.video.entity.VideoStatus;
 import com.transvidcloud.backend.video.mapper.VideoMapper;
 import com.transvidcloud.backend.video.repository.OutboxRepository;
+import com.transvidcloud.backend.video.repository.PagedVideoResult;
 import com.transvidcloud.backend.video.repository.VideoRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
@@ -341,5 +347,79 @@ public class VideoService {
         }
 
         return headResponse;
+    }
+
+    /**
+     * Liệt kê danh sách video trong Project kèm phân trang con trỏ (Cursor Pagination).
+     *
+     * @param projectId      Định danh dự án
+     * @param limit          Số lượng video tối đa một trang (1..100, mặc định 20)
+     * @param cursor         Con trỏ Base64URL trang trước hoặc null/rỗng nếu là trang đầu
+     * @param authentication Ngữ cảnh xác thực Spring Security
+     * @return VideoPageResponse chứa danh sách VideoResponse, nextCursor và cờ hasMore
+     */
+    public VideoPageResponse listVideosByProject(String projectId, Integer limit, String cursor, Authentication authentication) {
+        validateProjectAccess(projectId, authentication);
+
+        int effectiveLimit = (limit != null) ? limit : 20;
+        if (effectiveLimit < 1 || effectiveLimit > 100) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        VideoCursor decodedCursor = CursorCodec.decode(objectMapper, cursor, projectId);
+        Map<String, AttributeValue> exclusiveStartKey = CursorCodec.toExclusiveStartKey(decodedCursor);
+
+        PagedVideoResult pagedResult = videoRepository.findVideosByProjectWithPagination(
+                projectId,
+                effectiveLimit,
+                exclusiveStartKey
+        );
+
+        List<VideoResponse> items = pagedResult.items().stream()
+                .map(videoMapper::toVideoResponse)
+                .toList();
+
+        String nextCursor = CursorCodec.encodeFromLastEvaluatedKey(objectMapper, pagedResult.lastEvaluatedKey());
+        boolean hasMore = (nextCursor != null);
+
+        return new VideoPageResponse(items, nextCursor, hasMore);
+    }
+
+    /**
+     * Lấy thông tin chi tiết của một Video cụ thể, tự động ghép tiền tố TVC_MEDIA_BASE_URL cho assets nếu COMPLETED.
+     *
+     * @param videoId        Định danh video
+     * @param authentication Ngữ cảnh xác thực Spring Security
+     * @return VideoResponse chi tiết
+     */
+    public VideoResponse getVideoDetails(String videoId, Authentication authentication) {
+        VideoItem video = videoRepository.findByVideoId(videoId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        validateProjectAccess(video.getProjectId(), authentication);
+
+        return videoMapper.toVideoResponse(video);
+    }
+
+    /**
+     * Xóa video (Fast Delete).
+     * Từ chối HTTP 409 Conflict (INVALID_STATE_TRANSITION) nếu video đang ở trạng thái PROCESSING.
+     *
+     * @param videoId        Định danh video
+     * @param authentication Ngữ cảnh xác thực Spring Security
+     */
+    public void deleteVideo(String videoId, Authentication authentication) {
+        VideoItem video = videoRepository.findByVideoId(videoId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        validateProjectAccess(video.getProjectId(), authentication);
+
+        if (VideoStatus.PROCESSING.name().equals(video.getStatus())) {
+            log.warn("Từ chối xóa video {}: video đang ở trạng thái PROCESSING", videoId);
+            throw new AppException(ErrorCode.INVALID_STATE_TRANSITION);
+        }
+
+        videoRepository.deleteVideoWithOutbox(videoId);
+        log.info("Đã xóa thành công video: videoId={}, projectId={}", videoId, video.getProjectId());
     }
 }

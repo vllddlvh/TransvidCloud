@@ -17,18 +17,24 @@ import com.transvidcloud.backend.common.exception.ErrorCode;
 import com.transvidcloud.backend.project.entity.ProjectItem;
 import com.transvidcloud.backend.project.repository.ProjectRepository;
 import com.transvidcloud.backend.video.dto.ConfirmVideoResult;
+import com.transvidcloud.backend.video.dto.CursorCodec;
 import com.transvidcloud.backend.video.dto.InitVideoRequest;
 import com.transvidcloud.backend.video.dto.InitVideoResponse;
+import com.transvidcloud.backend.video.dto.VideoCursor;
+import com.transvidcloud.backend.video.dto.VideoPageResponse;
+import com.transvidcloud.backend.video.dto.VideoResponse;
 import com.transvidcloud.backend.video.entity.OutboxItem;
 import com.transvidcloud.backend.video.entity.VideoItem;
 import com.transvidcloud.backend.video.entity.VideoStatus;
 import com.transvidcloud.backend.video.mapper.VideoMapper;
 import com.transvidcloud.backend.video.repository.OutboxRepository;
+import com.transvidcloud.backend.video.repository.PagedVideoResult;
 import com.transvidcloud.backend.video.repository.VideoRepository;
 import java.net.URI;
 import java.net.URL;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -40,6 +46,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
@@ -85,6 +92,8 @@ class VideoServiceTest {
     void setUp() {
         videoMapper = Mappers.getMapper(VideoMapper.class);
         tvcProperties = new TvcProperties();
+        tvcProperties.getMedia().setBaseUrl("/media");
+        videoMapper.setTvcProperties(tvcProperties);
         tvcProperties.getAws().getS3().setInputBucket("tvc-local-input");
         tvcProperties.getAws().getS3().setPresignTtlMinutes(15);
         tvcProperties.getUpload().setMaxBytes(209715200L);
@@ -583,5 +592,244 @@ class VideoServiceTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    // ==========================================
+    // Tests cho listVideosByProject (F-008 US1)
+    // ==========================================
+
+    @Test
+    @DisplayName("listVideosByProject: Thành công trang đầu tiên (cursor = null) trả về danh sách, nextCursor và hasMore = true")
+    void testListVideosByProject_Success_FirstPage() {
+        mockJwtUser(ownerId);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        VideoItem item1 = createVideo("vid_001", VideoStatus.COMPLETED.name());
+        VideoItem item2 = createVideo("vid_002", VideoStatus.PENDING.name());
+        Map<String, AttributeValue> lastKey = Map.of(
+                "projectId", AttributeValue.builder().s(projectId).build(),
+                "videoId", AttributeValue.builder().s("vid_002").build(),
+                "createdAt", AttributeValue.builder().s("2026-11-01T10:00:00Z").build()
+        );
+
+        when(videoRepository.findVideosByProjectWithPagination(projectId, 2, null))
+                .thenReturn(new PagedVideoResult(List.of(item1, item2), lastKey));
+
+        VideoPageResponse response = videoService.listVideosByProject(projectId, 2, null, authentication);
+
+        assertThat(response).isNotNull();
+        assertThat(response.items()).hasSize(2);
+        assertThat(response.hasMore()).isTrue();
+        assertThat(response.nextCursor()).isNotNull();
+
+        // Kiểm tra nextCursor giải mã ra đúng
+        VideoCursor decoded = CursorCodec.decode(objectMapper, response.nextCursor(), projectId);
+        assertThat(decoded.videoId()).isEqualTo("vid_002");
+    }
+
+    @Test
+    @DisplayName("listVideosByProject: Thành công trang tiếp theo với cursor hợp lệ và trang cuối trả về hasMore = false")
+    void testListVideosByProject_Success_NextAndLastPage() {
+        mockJwtUser(ownerId);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        VideoCursor cursor = new VideoCursor(projectId, "vid_002", "2026-11-01T10:00:00Z");
+        String cursorStr = CursorCodec.encode(objectMapper, cursor);
+        Map<String, AttributeValue> expectedStartKey = CursorCodec.toExclusiveStartKey(cursor);
+
+        VideoItem item3 = createVideo("vid_003", VideoStatus.COMPLETED.name());
+        // Trang cuối cùng: lastEvaluatedKey = null
+        when(videoRepository.findVideosByProjectWithPagination(projectId, 2, expectedStartKey))
+                .thenReturn(new PagedVideoResult(List.of(item3), null));
+
+        VideoPageResponse response = videoService.listVideosByProject(projectId, 2, cursorStr, authentication);
+
+        assertThat(response).isNotNull();
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.hasMore()).isFalse();
+        assertThat(response.nextCursor()).isNull();
+    }
+
+    @Test
+    @DisplayName("listVideosByProject: Từ chối với HTTP 400 INVALID_CURSOR khi cursor bị tráo đổi sang projectId khác")
+    void testListVideosByProject_Throws400_WhenCursorProjectTampered() {
+        mockJwtUser(ownerId);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        VideoCursor wrongProjectCursor = new VideoCursor("prj_other_tenant", "vid_999", "2026-11-01T10:00:00Z");
+        String tamperedCursor = CursorCodec.encode(objectMapper, wrongProjectCursor);
+
+        assertThatThrownBy(() -> videoService.listVideosByProject(projectId, 20, tamperedCursor, authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_CURSOR));
+    }
+
+    @Test
+    @DisplayName("listVideosByProject: Từ chối với HTTP 400 VALIDATION_ERROR khi limit ngoài phạm vi 1..100")
+    void testListVideosByProject_Throws400_WhenLimitOutOfRange() {
+        mockJwtUser(ownerId);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        assertThatThrownBy(() -> videoService.listVideosByProject(projectId, 0, null, authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
+
+        assertThatThrownBy(() -> videoService.listVideosByProject(projectId, 101, null, authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
+    }
+
+    @Test
+    @DisplayName("listVideosByProject: Từ chối với HTTP 403 ACCESS_DENIED khi JWT user không sở hữu project")
+    void testListVideosByProject_Throws403_WhenJwtNotOwner() {
+        mockJwtUser("usr_stranger");
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        assertThatThrownBy(() -> videoService.listVideosByProject(projectId, 20, null, authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED));
+    }
+
+    // ==========================================
+    // Tests cho getVideoDetails (F-008 US2)
+    // ==========================================
+
+    @Test
+    @DisplayName("getVideoDetails: Thành công khi video COMPLETED -> trả về đầy đủ VideoAssets với tiền tố /media")
+    void testGetVideoDetails_Success_CompletedWithAssets() {
+        mockJwtUser(ownerId);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        String videoId = "vid_comp_001";
+        VideoItem video = createVideo(videoId, VideoStatus.COMPLETED.name());
+        video.setAssets(Map.of(
+                "masterPlaylist", projectId + "/" + videoId + "/hls/master.m3u8",
+                "hls360", projectId + "/" + videoId + "/hls/360p/index.m3u8",
+                "hls720", projectId + "/" + videoId + "/hls/720p/index.m3u8",
+                "thumbnail", projectId + "/" + videoId + "/thumb/default.jpg"
+        ));
+        when(videoRepository.findByVideoId(videoId)).thenReturn(Optional.of(video));
+
+        VideoResponse response = videoService.getVideoDetails(videoId, authentication);
+
+        assertThat(response).isNotNull();
+        assertThat(response.videoId()).isEqualTo(videoId);
+        assertThat(response.status()).isEqualTo(VideoStatus.COMPLETED);
+        assertThat(response.assets()).isNotNull();
+        assertThat(response.assets().masterPlaylistUrl()).isEqualTo("/media/" + projectId + "/" + videoId + "/hls/master.m3u8");
+        assertThat(response.assets().hls360Url()).isEqualTo("/media/" + projectId + "/" + videoId + "/hls/360p/index.m3u8");
+        assertThat(response.assets().hls720Url()).isEqualTo("/media/" + projectId + "/" + videoId + "/hls/720p/index.m3u8");
+        assertThat(response.assets().thumbnailUrl()).isEqualTo("/media/" + projectId + "/" + videoId + "/thumb/default.jpg");
+    }
+
+    @Test
+    @DisplayName("getVideoDetails: Thành công khi video PROCESSING -> assets mang giá trị null")
+    void testGetVideoDetails_Success_ProcessingNullAssets() {
+        mockJwtUser(ownerId);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        String videoId = "vid_proc_001";
+        VideoItem video = createVideo(videoId, VideoStatus.PROCESSING.name());
+        video.setAssets(Map.of("masterPlaylist", "some/path.m3u8")); // dù có dữ liệu thô cũng không trả về khi chưa hoàn tất
+        when(videoRepository.findByVideoId(videoId)).thenReturn(Optional.of(video));
+
+        VideoResponse response = videoService.getVideoDetails(videoId, authentication);
+
+        assertThat(response).isNotNull();
+        assertThat(response.videoId()).isEqualTo(videoId);
+        assertThat(response.status()).isEqualTo(VideoStatus.PROCESSING);
+        assertThat(response.assets()).isNull();
+    }
+
+    @Test
+    @DisplayName("getVideoDetails: Từ chối với HTTP 404 RESOURCE_NOT_FOUND khi video không tồn tại")
+    void testGetVideoDetails_Throws404_WhenNotFound() {
+        when(videoRepository.findByVideoId("vid_non_existent")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> videoService.getVideoDetails("vid_non_existent", authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("getVideoDetails: Từ chối với HTTP 403 ACCESS_DENIED khi API Key thuộc dự án khác")
+    void testGetVideoDetails_Throws403_WhenApiKeyMismatch() {
+        String videoId = "vid_comp_001";
+        VideoItem video = createVideo(videoId, VideoStatus.COMPLETED.name());
+        when(videoRepository.findByVideoId(videoId)).thenReturn(Optional.of(video));
+
+        ApiKeyPrincipal wrongKeyPrincipal = new ApiKeyPrincipal("prj_other", "Key", "pk");
+        when(authentication.isAuthenticated()).thenReturn(true);
+        when(authentication.getPrincipal()).thenReturn(wrongKeyPrincipal);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        assertThatThrownBy(() -> videoService.getVideoDetails(videoId, authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED));
+    }
+
+    // ==========================================
+    // Tests cho deleteVideo (F-008 US3)
+    // ==========================================
+
+    @Test
+    @DisplayName("deleteVideo: Thành công khi video ở trạng thái COMPLETED hoặc PENDING -> gọi deleteVideoWithOutbox")
+    void testDeleteVideo_Success_WhenCompleted() {
+        mockJwtUser(ownerId);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        String videoId = "vid_comp_001";
+        VideoItem video = createVideo(videoId, VideoStatus.COMPLETED.name());
+        when(videoRepository.findByVideoId(videoId)).thenReturn(Optional.of(video));
+
+        videoService.deleteVideo(videoId, authentication);
+
+        verify(videoRepository).deleteVideoWithOutbox(videoId);
+    }
+
+    @Test
+    @DisplayName("deleteVideo: Từ chối với HTTP 409 INVALID_STATE_TRANSITION khi video đang ở trạng thái PROCESSING")
+    void testDeleteVideo_Throws409_WhenProcessing() {
+        mockJwtUser(ownerId);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        String videoId = "vid_proc_001";
+        VideoItem video = createVideo(videoId, VideoStatus.PROCESSING.name());
+        when(videoRepository.findByVideoId(videoId)).thenReturn(Optional.of(video));
+
+        assertThatThrownBy(() -> videoService.deleteVideo(videoId, authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+
+        verify(videoRepository, never()).deleteVideoWithOutbox(any());
+    }
+
+    @Test
+    @DisplayName("deleteVideo: Từ chối với HTTP 404 RESOURCE_NOT_FOUND khi videoId không tồn tại")
+    void testDeleteVideo_Throws404_WhenNotFound() {
+        when(videoRepository.findByVideoId("vid_non_existent")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> videoService.deleteVideo("vid_non_existent", authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND));
+
+        verify(videoRepository, never()).deleteVideoWithOutbox(any());
+    }
+
+    @Test
+    @DisplayName("deleteVideo: Từ chối với HTTP 403 ACCESS_DENIED khi JWT user không sở hữu project")
+    void testDeleteVideo_Throws403_WhenJwtNotOwner() {
+        String videoId = "vid_comp_001";
+        VideoItem video = createVideo(videoId, VideoStatus.COMPLETED.name());
+        when(videoRepository.findByVideoId(videoId)).thenReturn(Optional.of(video));
+
+        mockJwtUser("usr_other");
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(createActiveProject()));
+
+        assertThatThrownBy(() -> videoService.deleteVideo(videoId, authentication))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.ACCESS_DENIED));
+
+        verify(videoRepository, never()).deleteVideoWithOutbox(any());
     }
 }

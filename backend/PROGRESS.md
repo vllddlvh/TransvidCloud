@@ -4,48 +4,49 @@
 
 ## Cập nhật
 
-- Thời điểm: `2026-11-01T16:40:00+07:00`
+- Thời điểm: `2026-11-01T17:23:00+07:00`
 - Branch: `phuong-backend`
 
 ## Trạng thái tổng quan
 
-- Feature vừa hoàn thành: `F-007: Xác nhận Upload, Chuyển trạng thái & Điều phối SQS Job (Epic A3/A5)`
-- Trạng thái F-007: `completed` (Đã nghiệm thu, hoàn tất kiểm chứng và commit)
-- Feature tiếp theo: `F-008: Truy vấn Danh sách (Cursor Pagination), Chi tiết, Assets & Xóa Video (Epic A2/A3)`
-- Trạng thái F-008: `planned`
-- Feature spec F-007: `specs/007-video-confirm-dispatch/spec.md`
-- Feature Evidence F-007: `quality/evidence/F-007-video-confirm-dispatch.md`
+- Current focus: `Sẵn sàng cho Feature tiếp theo (F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract)`
+- Feature vừa hoàn thành: `F-008: Truy vấn Danh sách (Cursor Pagination), Chi tiết, Assets & Xóa Video (Epic A2/A3)` (completed)
+- Feature spec F-008: [`specs/008-video-query-lifecycle/spec.md`](specs/008-video-query-lifecycle/spec.md)
+- Evidence F-008: [`quality/evidence/F-008-video-query-lifecycle.md`](quality/evidence/F-008-video-query-lifecycle.md)
+- Status: `ready-for-next-feature`
 
-## Kết quả đã được kiểm chứng (F-007)
+## Kết quả đã được kiểm chứng (F-008)
 
-- **Hoàn thành 100% 40/40 tasks trong `specs/007-video-confirm-dispatch/tasks.md`**:
-  - Triển khai endpoint `POST /api/videos/{videoId}/confirm`.
-  - Mẫu kiến trúc Transactional Outbox Event theo Single-Table trên bảng `tvc-{env}-videos` bằng `TransactWriteItems` nguyên tử.
-  - Tích hợp kiểm tra S3 `HeadObject` (chống file rỗng 0 byte, giới hạn 200MB linh hoạt).
-  - Điều phối SQS Job (`schemaVersion: 1`, `jobId`, `videoId`, `projectId`, `inputKey`, `requestedAt`) tới queue `tvc-{env}-jobs`.
-  - Cơ chế Outbox Relay Scheduler (`@Scheduled`) quét GSI `project-index` (`OUTBOX#PENDING`) phát bù sự kiện mà không Table Scan.
-  - Idempotency trọn vẹn: lần 1 trả 202 Accepted, lần 2 trả 200 OK không gửi lặp SQS message.
-  - Phân quyền kép (Bearer JWT + `X-API-Key`) và các mã lỗi 401, 403, 404, 409, 413, 422.
-- **Real Verification với Testcontainers LocalStack 3.0 (`VideoConfirmDispatchIT.java`)**: 5/5 kịch bản tích hợp thực tế PASS 100%.
-- **Newman E2E Postman Collection (`F-007-video-confirm-dispatch.postman_collection.json`)**: 16/16 requests, 29/29 assertions PASS 100%.
-- **Zero Regression (`./scripts/verify.sh`)**: 100% tests PASS (109 tests cũ + toàn bộ tests mới của F-007).
-- **Speckit Converge**: Đạt chuẩn `converged` (100% requirements, success criteria, plan decisions và hiến pháp đều thỏa mãn).
-- **Feature Evidence**: Đã lập hồ sơ đầy đủ tại `quality/evidence/F-007-video-confirm-dispatch.md`.
+- **Hoàn thành 100% 34/34 Tasks của F-008**:
+  - `Phase 1 & 2 (Setup & Foundational)`: Mã lỗi `INVALID_CURSOR`, cấu hình `tvc.media.base-url`, các DTOs (`VideoCursor`, `VideoAssets`, `VideoPageResponse`, `PagedVideoResult`), tiện ích `CursorCodec` (mã hóa Base64URL không padding, thẩm định an ninh chống tráo đổi projectId).
+  - `Phase 3 (User Story 1 - MVP)`: Endpoint `GET /api/projects/{projectId}/videos` phân trang con trỏ trên GSI `project-index`, sắp xếp giảm dần `createdAt`, lọc sạch bản ghi `OUTBOX#`.
+  - `Phase 4 (User Story 2)`: Endpoint `GET /api/videos/{videoId}` tra cứu chi tiết, tự động ghép tiền tố `TVC_MEDIA_BASE_URL` (mặc định `/media`) vào các URL `assets` (`masterPlaylistUrl`, `hls360Url`, `hls720Url`, `thumbnailUrl`) khi video `COMPLETED`, và trả về `assets = null` khi chưa xong.
+  - `Phase 5 (User Story 3)`: Endpoint `DELETE /api/videos/{videoId}` Fast Delete trả về 204 No Content và Conflict Guard chặn đứng với HTTP 409 Conflict (`INVALID_STATE_TRANSITION`) khi video đang `PROCESSING`.
+  - `Phase 6 (User Story 4)`: Dual Security bảo vệ toàn bộ 3 endpoints bằng Bearer JWT và `X-API-Key`, cô lập tuyệt đối dữ liệu giữa các tenant (401/403).
+  - `Phase 7 (Polish & Real Verification)`:
+    - Testcontainers LocalStack Integration Test (`VideoQueryLifecycleIT`): 4/4 runs PASS 100%.
+    - Postman E2E Collection (`F-008-video-query-lifecycle.postman_collection.json`): 18 requests, 27 assertions PASS 100% qua Newman CLI.
+    - Zero Regression: `./scripts/verify.sh` (`./mvnw -B clean verify`) PASS 100% trên toàn bộ test suite dự án (0 failures, 0 errors).
+    - Hồ sơ Feature Evidence được lập đầy đủ tại `quality/evidence/F-008-video-query-lifecycle.md`.
+    - `/speckit-converge`: Đạt kết quả `CONVERGED` (0 findings, 0 gaps).
 
-## Việc còn lại / Hành động tiếp theo
+## Việc còn lại
 
-1. Bắt đầu session mới cho **`F-008: Truy vấn Danh sách (Cursor Pagination), Chi tiết, Assets & Xóa Video (Epic A2/A3)`**.
-2. Thực hiện quy trình SDD cho F-008: `/speckit-specify F-008` ➔ `/speckit-plan` ➔ `/speckit-tasks` ➔ `/speckit-implement`.
+- Khởi động Feature tiếp theo theo kế hoạch: `F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract (Epic A5/A8/C5)`.
 
 ## Blocker / Quyết định cần con người
 
-- Không có blocker. F-007 đã được hoàn tất và đóng gọn gàng.
+- Không có blocker. Tất cả tests pass, codebase sạch, không có tiến trình treo.
 
 ## Verification gần nhất
 
 | Lệnh | Kết quả | Thời điểm | Evidence |
 |---|---|---|---|
-| `./scripts/verify.sh` (`./mvnw -B clean verify`) | `PASS` (100% tests pass, 0 failures, 0 errors) | `2026-11-01T16:26:22+07:00` | Zero Regression test suite pass toàn diện |
-| `npx --yes newman run backend/postman/F-007-video-confirm-dispatch.postman_collection.json` | `PASS` (16 requests, 29 assertions, 0 failures) | `2026-11-01T16:24:11+07:00` | E2E Postman test suite pass 100% |
-| `./mvnw -B test -Dtest="VideoConfirmDispatchIT"` | `PASS` (5 runs, 0 failures) | `2026-11-01T16:21:06+07:00` | Real Verification LocalStack S3 + DynamoDB + SQS |
-| `./scripts/check-setup.sh` | `PASS` (10 required files OK) | `2026-11-01T16:24:25+07:00` | Harness structure check pass |
+| `./scripts/verify.sh` (`./mvnw -B clean verify`) | `PASS` (100% test suite pass, 0 failures, 0 errors) | `2026-11-01T17:18:54+07:00` | Zero Regression test suite pass toàn diện |
+| `npx newman run backend/postman/F-008-video-query-lifecycle.postman_collection.json` | `PASS` (18 requests, 27 assertions, 0 failures) | `2026-11-01T17:16:21+07:00` | E2E Postman collection pass 100% |
+| `./mvnw -B test -Dtest="VideoQueryLifecycleIT"` | `PASS` (4 runs, 0 failures, 0 errors) | `2026-11-01T17:13:41+07:00` | Testcontainers LocalStack DynamoDB + S3 IT |
+| `/speckit-converge` | `CONVERGED` (0 findings) | `2026-11-01T17:21:40+07:00` | Codebase khớp 100% spec, plan, tasks |
+
+## Hành động tiếp theo
+
+- Bắt đầu chu trình SDD cho Feature tiếp theo (F-009): `/speckit-specify F-009`.

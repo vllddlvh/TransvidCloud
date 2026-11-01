@@ -1,6 +1,8 @@
 package com.transvidcloud.backend.common.exception;
 
 import com.transvidcloud.backend.common.dto.ErrorResponse;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -113,6 +116,44 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 ErrorCode.TYPE_MISMATCH.getDefaultMessage(),
                 Instant.now(),
                 details
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+            HandlerMethodValidationException ex,
+            HttpHeaders headers,
+            HttpStatusCode status,
+            WebRequest request
+    ) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        for (var result : ex.getAllValidationResults()) {
+            String paramName = result.getMethodParameter().getParameterName();
+            for (var resolvableError : result.getResolvableErrors()) {
+                details.put(paramName != null ? paramName : "parameter", resolvableError.getDefaultMessage());
+            }
+        }
+        ErrorResponse response = new ErrorResponse(
+                ErrorCode.VALIDATION_ERROR.getCode(),
+                ErrorCode.VALIDATION_ERROR.getDefaultMessage(),
+                Instant.now(),
+                details.isEmpty() ? null : details
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        for (ConstraintViolation<?> violation : ex.getConstraintViolations()) {
+            details.put(violation.getPropertyPath().toString(), violation.getMessage());
+        }
+        ErrorResponse response = new ErrorResponse(
+                ErrorCode.VALIDATION_ERROR.getCode(),
+                ErrorCode.VALIDATION_ERROR.getDefaultMessage(),
+                Instant.now(),
+                details.isEmpty() ? null : details
         );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }

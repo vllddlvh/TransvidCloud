@@ -3,7 +3,11 @@ package com.transvidcloud.backend.video.controller;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -17,6 +21,8 @@ import com.transvidcloud.backend.video.dto.ConfirmVideoResult;
 import com.transvidcloud.backend.video.dto.InitVideoRequest;
 import com.transvidcloud.backend.video.dto.InitVideoResponse;
 import com.transvidcloud.backend.video.dto.PresignedUploadInfo;
+import com.transvidcloud.backend.video.dto.VideoAssets;
+import com.transvidcloud.backend.video.dto.VideoPageResponse;
 import com.transvidcloud.backend.video.dto.VideoResponse;
 import com.transvidcloud.backend.video.entity.VideoStatus;
 import com.transvidcloud.backend.video.service.VideoService;
@@ -319,5 +325,201 @@ class VideoControllerTest {
                         .principal(mockPrincipal))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code", is("INVALID_STATE_TRANSITION")));
+    }
+
+    // ==========================================
+    // Tests cho GET /projects/{projectId}/videos (F-008 US1 & US4)
+    // ==========================================
+
+    @Test
+    @DisplayName("GET /projects/{projectId}/videos: Thành công trả về HTTP 200 OK kèm VideoPageResponse")
+    void testListVideosByProject_Success_Returns200() throws Exception {
+        VideoResponse v1 = createTestVideoResponse("vid_001", VideoStatus.COMPLETED);
+        VideoPageResponse pageResponse = new VideoPageResponse(List.of(v1), "next-cursor-str", true);
+
+        when(videoService.listVideosByProject(eq(projectId), eq(20), eq("sample-cursor"), any()))
+                .thenReturn(pageResponse);
+
+        mockMvc.perform(get("/projects/{projectId}/videos", projectId)
+                        .param("limit", "20")
+                        .param("cursor", "sample-cursor")
+                        .principal(mockPrincipal))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].videoId", is("vid_001")))
+                .andExpect(jsonPath("$.nextCursor", is("next-cursor-str")))
+                .andExpect(jsonPath("$.hasMore", is(true)));
+    }
+
+    @Test
+    @DisplayName("GET /projects/{projectId}/videos: Cursor không hợp lệ trả về HTTP 400 INVALID_CURSOR")
+    void testListVideosByProject_InvalidCursor_Returns400() throws Exception {
+        when(videoService.listVideosByProject(eq(projectId), any(), eq("corrupted-cursor"), any()))
+                .thenThrow(new AppException(ErrorCode.INVALID_CURSOR));
+
+        mockMvc.perform(get("/projects/{projectId}/videos", projectId)
+                        .param("cursor", "corrupted-cursor")
+                        .principal(mockPrincipal))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("INVALID_CURSOR")));
+    }
+
+    @Test
+    @DisplayName("GET /projects/{projectId}/videos: Limit ngoài phạm vi 1..100 trả về HTTP 400 VALIDATION_ERROR")
+    void testListVideosByProject_LimitOutOfRange_Returns400() throws Exception {
+        when(videoService.listVideosByProject(eq(projectId), eq(0), any(), any()))
+                .thenThrow(new AppException(ErrorCode.VALIDATION_ERROR));
+
+        mockMvc.perform(get("/projects/{projectId}/videos", projectId)
+                        .param("limit", "0")
+                        .principal(mockPrincipal))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    @DisplayName("GET /projects/{projectId}/videos: Không có quyền truy cập trả về HTTP 403 ACCESS_DENIED")
+    void testListVideosByProject_AccessDenied_Returns403() throws Exception {
+        when(videoService.listVideosByProject(eq(projectId), any(), any(), any()))
+                .thenThrow(new AppException(ErrorCode.ACCESS_DENIED));
+
+        mockMvc.perform(get("/projects/{projectId}/videos", projectId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code", is("ACCESS_DENIED")));
+    }
+
+    // ==========================================
+    // Tests cho GET /videos/{videoId} (F-008 US2 & US4)
+    // ==========================================
+
+    @Test
+    @DisplayName("GET /videos/{videoId}: Thành công khi video COMPLETED trả về HTTP 200 OK kèm Assets đầy đủ")
+    void testGetVideoDetails_Success_Returns200WithAssets() throws Exception {
+        String videoId = "vid_comp_001";
+        VideoAssets assets = new VideoAssets(
+                "/media/prj/vid/hls/master.m3u8",
+                "/media/prj/vid/hls/360p/index.m3u8",
+                "/media/prj/vid/hls/720p/index.m3u8",
+                "/media/prj/vid/thumb/default.jpg"
+        );
+        VideoResponse videoResponse = new VideoResponse(
+                videoId,
+                projectId,
+                "Bài Giảng Hay",
+                VideoStatus.COMPLETED,
+                52428800L,
+                "video/mp4",
+                0,
+                null,
+                assets,
+                Instant.now(),
+                Instant.now(),
+                Instant.now(),
+                Instant.now()
+        );
+
+        when(videoService.getVideoDetails(eq(videoId), any())).thenReturn(videoResponse);
+
+        mockMvc.perform(get("/videos/{videoId}", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.videoId", is(videoId)))
+                .andExpect(jsonPath("$.status", is("COMPLETED")))
+                .andExpect(jsonPath("$.assets.masterPlaylistUrl", is("/media/prj/vid/hls/master.m3u8")))
+                .andExpect(jsonPath("$.assets.hls360Url", is("/media/prj/vid/hls/360p/index.m3u8")))
+                .andExpect(jsonPath("$.assets.thumbnailUrl", is("/media/prj/vid/thumb/default.jpg")));
+    }
+
+    @Test
+    @DisplayName("GET /videos/{videoId}: Video không tồn tại trả về HTTP 404 RESOURCE_NOT_FOUND")
+    void testGetVideoDetails_NotFound_Returns404() throws Exception {
+        String videoId = "vid_not_found";
+        when(videoService.getVideoDetails(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        mockMvc.perform(get("/videos/{videoId}", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("RESOURCE_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("GET /videos/{videoId}: Chưa xác thực trả về HTTP 401 UNAUTHENTICATED")
+    void testGetVideoDetails_Unauthenticated_Returns401() throws Exception {
+        String videoId = "vid_comp_001";
+        when(videoService.getVideoDetails(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.UNAUTHENTICATED));
+
+        mockMvc.perform(get("/videos/{videoId}", videoId))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code", is("UNAUTHENTICATED")));
+    }
+
+    @Test
+    @DisplayName("GET /videos/{videoId}: Không có quyền truy cập trả về HTTP 403 ACCESS_DENIED")
+    void testGetVideoDetails_AccessDenied_Returns403() throws Exception {
+        String videoId = "vid_comp_001";
+        when(videoService.getVideoDetails(eq(videoId), any()))
+                .thenThrow(new AppException(ErrorCode.ACCESS_DENIED));
+
+        mockMvc.perform(get("/videos/{videoId}", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code", is("ACCESS_DENIED")));
+    }
+
+    // ==========================================
+    // Tests cho DELETE /videos/{videoId} (F-008 US3 & US4)
+    // ==========================================
+
+    @Test
+    @DisplayName("DELETE /videos/{videoId}: Thành công trả về HTTP 204 No Content")
+    void testDeleteVideo_Success_Returns204() throws Exception {
+        String videoId = "vid_to_delete";
+
+        mockMvc.perform(delete("/videos/{videoId}", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isNoContent());
+
+        verify(videoService).deleteVideo(eq(videoId), any());
+    }
+
+    @Test
+    @DisplayName("DELETE /videos/{videoId}: Video đang PROCESSING trả về HTTP 409 INVALID_STATE_TRANSITION")
+    void testDeleteVideo_ProcessingConflict_Returns409() throws Exception {
+        String videoId = "vid_processing";
+        doThrow(new AppException(ErrorCode.INVALID_STATE_TRANSITION))
+                .when(videoService).deleteVideo(eq(videoId), any());
+
+        mockMvc.perform(delete("/videos/{videoId}", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code", is("INVALID_STATE_TRANSITION")));
+    }
+
+    @Test
+    @DisplayName("DELETE /videos/{videoId}: Video không tồn tại trả về HTTP 404 RESOURCE_NOT_FOUND")
+    void testDeleteVideo_NotFound_Returns404() throws Exception {
+        String videoId = "vid_unknown";
+        doThrow(new AppException(ErrorCode.RESOURCE_NOT_FOUND))
+                .when(videoService).deleteVideo(eq(videoId), any());
+
+        mockMvc.perform(delete("/videos/{videoId}", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("RESOURCE_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("DELETE /videos/{videoId}: Không có quyền xóa trả về HTTP 403 ACCESS_DENIED")
+    void testDeleteVideo_AccessDenied_Returns403() throws Exception {
+        String videoId = "vid_forbidden";
+        doThrow(new AppException(ErrorCode.ACCESS_DENIED))
+                .when(videoService).deleteVideo(eq(videoId), any());
+
+        mockMvc.perform(delete("/videos/{videoId}", videoId)
+                        .principal(mockPrincipal))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code", is("ACCESS_DENIED")));
     }
 }

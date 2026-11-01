@@ -13,6 +13,7 @@ public enum ErrorCode {
     TYPE_MISMATCH("TYPE_MISMATCH", "Kiểu dữ liệu của tham số không đúng", HttpStatus.BAD_REQUEST),
     INVALID_PARAMETER("INVALID_PARAMETER", "Tham số không hợp lệ", HttpStatus.BAD_REQUEST),
     INVALID_KEY("INVALID_KEY", "Khóa API hoặc tham số yêu cầu không hợp lệ", HttpStatus.BAD_REQUEST),
+    INVALID_CURSOR("INVALID_CURSOR", "Con trỏ phân trang không hợp lệ hoặc đã bị thay đổi", HttpStatus.BAD_REQUEST),
 
     // 401 Unauthorized
     UNAUTHENTICATED("UNAUTHENTICATED", "Yêu cầu xác thực tài khoản hoặc token không hợp lệ", HttpStatus.UNAUTHORIZED),
