@@ -4,49 +4,52 @@
 
 ## Cập nhật
 
-- Thời điểm: `2026-11-01T17:23:00+07:00`
+- Thời điểm: `2026-11-01T18:25:00+07:00`
 - Branch: `phuong-backend`
 
 ## Trạng thái tổng quan
 
-- Current focus: `Sẵn sàng cho Feature tiếp theo (F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract)`
-- Feature vừa hoàn thành: `F-008: Truy vấn Danh sách (Cursor Pagination), Chi tiết, Assets & Xóa Video (Epic A2/A3)` (completed)
-- Feature spec F-008: [`specs/008-video-query-lifecycle/spec.md`](specs/008-video-query-lifecycle/spec.md)
-- Evidence F-008: [`quality/evidence/F-008-video-query-lifecycle.md`](quality/evidence/F-008-video-query-lifecycle.md)
-- Status: `ready-for-next-feature`
+- Current focus: `F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract (Epic A5/A8/C5)` (Hoàn tất & Đóng feature)
+- Feature spec F-009: [`specs/009-observability-integration-tests/spec.md`](specs/009-observability-integration-tests/spec.md)
+- Checklist F-009: [`specs/009-observability-integration-tests/checklists/requirements.md`](specs/009-observability-integration-tests/checklists/requirements.md)
+- Feature vừa hoàn thành: `F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract` (completed)
+- Evidence F-009: [`quality/evidence/F-009-observability-integration-tests.md`](quality/evidence/F-009-observability-integration-tests.md)
+- Status: `completed`
 
-## Kết quả đã được kiểm chứng (F-008)
+## Kết quả đạt được của F-009
 
-- **Hoàn thành 100% 34/34 Tasks của F-008**:
-  - `Phase 1 & 2 (Setup & Foundational)`: Mã lỗi `INVALID_CURSOR`, cấu hình `tvc.media.base-url`, các DTOs (`VideoCursor`, `VideoAssets`, `VideoPageResponse`, `PagedVideoResult`), tiện ích `CursorCodec` (mã hóa Base64URL không padding, thẩm định an ninh chống tráo đổi projectId).
-  - `Phase 3 (User Story 1 - MVP)`: Endpoint `GET /api/projects/{projectId}/videos` phân trang con trỏ trên GSI `project-index`, sắp xếp giảm dần `createdAt`, lọc sạch bản ghi `OUTBOX#`.
-  - `Phase 4 (User Story 2)`: Endpoint `GET /api/videos/{videoId}` tra cứu chi tiết, tự động ghép tiền tố `TVC_MEDIA_BASE_URL` (mặc định `/media`) vào các URL `assets` (`masterPlaylistUrl`, `hls360Url`, `hls720Url`, `thumbnailUrl`) khi video `COMPLETED`, và trả về `assets = null` khi chưa xong.
-  - `Phase 5 (User Story 3)`: Endpoint `DELETE /api/videos/{videoId}` Fast Delete trả về 204 No Content và Conflict Guard chặn đứng với HTTP 409 Conflict (`INVALID_STATE_TRANSITION`) khi video đang `PROCESSING`.
-  - `Phase 6 (User Story 4)`: Dual Security bảo vệ toàn bộ 3 endpoints bằng Bearer JWT và `X-API-Key`, cô lập tuyệt đối dữ liệu giữa các tenant (401/403).
-  - `Phase 7 (Polish & Real Verification)`:
-    - Testcontainers LocalStack Integration Test (`VideoQueryLifecycleIT`): 4/4 runs PASS 100%.
-    - Postman E2E Collection (`F-008-video-query-lifecycle.postman_collection.json`): 18 requests, 27 assertions PASS 100% qua Newman CLI.
-    - Zero Regression: `./scripts/verify.sh` (`./mvnw -B clean verify`) PASS 100% trên toàn bộ test suite dự án (0 failures, 0 errors).
-    - Hồ sơ Feature Evidence được lập đầy đủ tại `quality/evidence/F-008-video-query-lifecycle.md`.
-    - `/speckit-converge`: Đạt kết quả `CONVERGED` (0 findings, 0 gaps).
+1. **Structured Logging & Correlation Tracking (US1)**:
+   - Triển khai `LogContext` và `CorrelationIdFilter` (`Ordered.HIGHEST_PRECEDENCE`) tự động tiếp nhận hoặc tạo mới `X-Correlation-ID` (hoặc fallback `X-Request-ID`), làm sạch ký tự bẩn, gán vào Logback MDC và trả về trong HTTP response header.
+   - Làm giàu ngữ cảnh nghiệp vụ (`userId`, `projectId`, `videoId`) xuyên suốt `VideoService`, `ProjectService`, `ApiKeyService` và `GlobalExceptionHandler`.
+   - `OutboxRelayScheduler` tự sinh correlation ID dạng `sched-outbox-...` cho các tác vụ nền không có HTTP request.
+2. **Log Masking & Security (US2)**:
+   - Cơ chế phòng thủ theo chiều sâu (Defense-in-Depth): Loại trừ trường nhạy cảm trong DTO `toString()` (`RegisterRequest`, `LoginRequest`, `ApiKeyCreatedResponse`, `@ToString(exclude = "passwordHash")` trên `UserItem`).
+   - Xây dựng `MaskingMessageConverter` và `StructuredLoggingLayout` kết hợp `logback-spring.xml` tự động quét regex và che giấu `password`, `rawApiKey`, `Bearer token`, `aws_secret_access_key` thành `[PROTECTED]`, và loại bỏ toàn bộ query string chứa chữ ký S3 Presigned URL (`X-Amz-Signature`).
+   - Hỗ trợ biến môi trường `LOG_FORMAT=text` (màu có cấu trúc) hoặc `LOG_FORMAT=json` (single-line JSON).
+3. **Full-Lifecycle Integration & Contract Tests (US3)**:
+   - Xây dựng `ObservabilityLoggingIT` kiểm chứng trích xuất header correlation, MDC enrichment, và log masking an toàn.
+   - Xây dựng `VideoFullLifecycleIT` chạy trên môi trường đám mây giả lập Testcontainers LocalStack (DynamoDB, S3, SQS): kiểm chứng chuỗi trọn vẹn Auth -> Project -> API Key -> Upload Init -> S3 Upload -> Confirm -> SQS Dispatch -> Worker Emulation -> Query Detail/List.
+   - Thẩm định 100% tính tương thích của message SQS nhận được với hợp đồng `docs/contracts/sqs-job-message.schema.json` v1 (`jobId`, `videoId`, `projectId`, `inputKey`, `requestedAt`, `schemaVersion = 1`).
+   - Thẩm định Multi-tenancy Isolation (Tenant B cố tình dùng JWT hoặc API Key truy cập tài nguyên Tenant A đều bị chặn đứng với 403 `ACCESS_DENIED`).
+   - Thẩm định xung đột trạng thái: Chặn xóa video khi `PROCESSING` với 409 `INVALID_STATE_TRANSITION`, cho phép Fast Delete khi `COMPLETED` với 204 No Content.
 
 ## Việc còn lại
 
-- Khởi động Feature tiếp theo theo kế hoạch: `F-009: Quan sát hệ thống, Bảo mật Log & Bộ kiểm thử Tích hợp / Contract (Epic A5/A8/C5)`.
+- Chuẩn bị kế hoạch và kích hoạt Feature tiếp theo theo roadmap: `F-010: Thông báo Webhook khi hoàn tất xử lý Video (Epic A7 — P1)`.
 
 ## Blocker / Quyết định cần con người
 
-- Không có blocker. Tất cả tests pass, codebase sạch, không có tiến trình treo.
+- Không có blocker. Tất cả các tính năng P0 của dự án (từ F-001 đến F-009) đã hoàn thành, kiểm chứng và đóng thành công.
 
 ## Verification gần nhất
 
 | Lệnh | Kết quả | Thời điểm | Evidence |
 |---|---|---|---|
-| `./scripts/verify.sh` (`./mvnw -B clean verify`) | `PASS` (100% test suite pass, 0 failures, 0 errors) | `2026-11-01T17:18:54+07:00` | Zero Regression test suite pass toàn diện |
-| `npx newman run backend/postman/F-008-video-query-lifecycle.postman_collection.json` | `PASS` (18 requests, 27 assertions, 0 failures) | `2026-11-01T17:16:21+07:00` | E2E Postman collection pass 100% |
-| `./mvnw -B test -Dtest="VideoQueryLifecycleIT"` | `PASS` (4 runs, 0 failures, 0 errors) | `2026-11-01T17:13:41+07:00` | Testcontainers LocalStack DynamoDB + S3 IT |
-| `/speckit-converge` | `CONVERGED` (0 findings) | `2026-11-01T17:21:40+07:00` | Codebase khớp 100% spec, plan, tasks |
+| `./mvnw -B test -Dtest=ObservabilityLoggingIT,VideoFullLifecycleIT` | `PASS` (6/6 tests pass, 0 failures, 0 errors) | `2026-11-01T18:18:56+07:00` | Kiểm thử tích hợp Testcontainers LocalStack đạt 100% |
+| `./scripts/verify.sh` (`./mvnw -B clean verify`) | `PASS` (100% test suite pass, 24 IT tests, 100+ unit tests, 0 failures) | `2026-11-01T18:22:19+07:00` | Đạt Zero Regression tuyệt đối trên toàn bộ dự án |
+| `./scripts/check-setup.sh` | `PASS` (10/10 checks passed) | `2026-11-01T18:20:00+07:00` | Harness structure check hoàn chỉnh |
 
 ## Hành động tiếp theo
 
-- Bắt đầu chu trình SDD cho Feature tiếp theo (F-009): `/speckit-specify F-009`.
+- Bàn giao session sạch (Clean Handoff) cho Feature F-009.
+- Chuyển sang Feature F-010 khi người dùng yêu cầu.

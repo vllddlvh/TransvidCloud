@@ -1,5 +1,6 @@
 package com.transvidcloud.backend.video.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -7,9 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.transvidcloud.backend.common.config.TvcProperties;
+import com.transvidcloud.backend.common.logging.LogContext;
 import com.transvidcloud.backend.video.entity.OutboxItem;
 import com.transvidcloud.backend.video.repository.OutboxRepository;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,5 +74,23 @@ class OutboxRelaySchedulerTest {
         relayScheduler.relayPendingOutboxEvents();
 
         verify(outboxRepository, never()).findPendingOutboxEvents(any(Integer.class));
+    }
+
+    @Test
+    @DisplayName("relayPendingOutboxEvents: Gán correlationId có tiền tố sched-outbox- và dọn dẹp MDC sau khi chạy")
+    void testRelayPendingOutboxEventsSetsAndClearsCorrelationId() {
+        OutboxItem item = OutboxItem.builder().targetVideoId("vid_01").payload("{}").build();
+        AtomicReference<String> capturedCorrelationId = new AtomicReference<>();
+
+        when(outboxRepository.findPendingOutboxEvents(10)).thenAnswer(inv -> {
+            capturedCorrelationId.set(LogContext.getCorrelationId());
+            return List.of(item);
+        });
+        when(outboxPublisherService.publishOutboxItem(any())).thenReturn(true);
+
+        relayScheduler.relayPendingOutboxEvents();
+
+        assertThat(capturedCorrelationId.get()).isNotNull().startsWith("sched-outbox-");
+        assertThat(LogContext.getCorrelationId()).isNull();
     }
 }

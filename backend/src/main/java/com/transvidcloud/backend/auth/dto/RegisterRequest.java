@@ -19,4 +19,9 @@ public record RegisterRequest(
 
         @Size(max = 100, message = "Họ tên không được vượt quá 100 ký tự")
         String fullName
-) {}
+) {
+    @Override
+    public String toString() {
+        return "RegisterRequest[email=" + email + ", password=[PROTECTED], fullName=" + fullName + "]";
+    }
+}

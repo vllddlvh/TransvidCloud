@@ -6,6 +6,7 @@ import com.transvidcloud.backend.apikey.security.ApiKeyPrincipal;
 import com.transvidcloud.backend.common.config.TvcProperties;
 import com.transvidcloud.backend.common.exception.AppException;
 import com.transvidcloud.backend.common.exception.ErrorCode;
+import com.transvidcloud.backend.common.logging.LogContext;
 import com.transvidcloud.backend.project.entity.ProjectItem;
 import com.transvidcloud.backend.project.repository.ProjectRepository;
 import com.transvidcloud.backend.video.dto.ConfirmVideoResult;
@@ -102,6 +103,7 @@ public class VideoService {
 
         // 4. Sinh videoId duy nhất và cấu thành inputKey
         String videoId = VideoValidationHelper.generateVideoId();
+        LogContext.setVideoId(videoId);
         String inputKey = projectId + "/" + videoId + "/source." + ext;
 
         // 5. Ký S3 Presigned PUT URL
@@ -164,6 +166,8 @@ public class VideoService {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
 
+        LogContext.setProjectId(projectId);
+
         ProjectItem project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
 
@@ -175,6 +179,7 @@ public class VideoService {
 
         // 1. Nếu xác thực qua X-API-Key
         if (principal instanceof ApiKeyPrincipal apiKeyPrincipal) {
+            LogContext.setUserId(apiKeyPrincipal.getName());
             if (!apiKeyPrincipal.projectId().equals(projectId)) {
                 log.warn("API Key của Project {} không được phép truy cập Project {}",
                         apiKeyPrincipal.projectId(), projectId);
@@ -190,6 +195,7 @@ public class VideoService {
         } else {
             userId = authentication.getName();
         }
+        LogContext.setUserId(userId);
 
         if (userId == null || !project.getOwnerId().equals(userId)) {
             log.warn("Truy cập trái phép vào Project {}: user yêu cầu={}, ownerId={}",
@@ -210,6 +216,7 @@ public class VideoService {
      * @return ConfirmVideoResult chứa VideoResponse và cờ newlyConfirmed
      */
     public ConfirmVideoResult confirmVideoUpload(String videoId, Authentication authentication) {
+        LogContext.setVideoId(videoId);
         // 1. Tra cứu bản ghi VideoItem
         VideoItem video = videoRepository.findByVideoId(videoId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
@@ -250,6 +257,7 @@ public class VideoService {
         // 6. Chuẩn bị thông điệp SQS và bản ghi OutboxItem
         String now = Instant.now().toString();
         String jobId = VideoValidationHelper.generateJobId();
+        LogContext.setJobId(jobId);
 
         SqsJobMessage jobMessage = new SqsJobMessage(
                 jobId,
@@ -393,6 +401,7 @@ public class VideoService {
      * @return VideoResponse chi tiết
      */
     public VideoResponse getVideoDetails(String videoId, Authentication authentication) {
+        LogContext.setVideoId(videoId);
         VideoItem video = videoRepository.findByVideoId(videoId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
 
@@ -409,6 +418,7 @@ public class VideoService {
      * @param authentication Ngữ cảnh xác thực Spring Security
      */
     public void deleteVideo(String videoId, Authentication authentication) {
+        LogContext.setVideoId(videoId);
         VideoItem video = videoRepository.findByVideoId(videoId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
 

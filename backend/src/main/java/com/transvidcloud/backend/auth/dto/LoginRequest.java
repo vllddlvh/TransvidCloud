@@ -13,4 +13,9 @@ public record LoginRequest(
 
         @NotBlank(message = "Mật khẩu không được để trống")
         String password
-) {}
+) {
+    @Override
+    public String toString() {
+        return "LoginRequest[email=" + email + ", password=[PROTECTED]]";
+    }
+}

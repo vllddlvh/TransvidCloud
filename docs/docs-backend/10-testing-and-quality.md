@@ -15,13 +15,15 @@ Repo hiện có `tests/e2e/`; ưu tiên dùng lại kịch bản và tooling đ�
 ## Các case Backend cần kiểm tra
 
 - Đăng nhập sai và request không có credential.
-- User/project không sở hữu tài nguyên được yêu cầu.
+- User/project không sở hữu tài nguyên được yêu cầu (Multi-tenant isolation).
 - Upload vượt giới hạn hoặc confirm khi object chưa có.
 - Confirm lặp và lỗi enqueue SQS.
 - Cursor pagination qua nhiều trang.
-- Video `COMPLETED` không bị chuyển ngược trạng thái.
+- Video `COMPLETED` không bị chuyển ngược trạng thái (Chặn xóa khi `PROCESSING`, xóa 204 khi `COMPLETED`).
 - Lỗi AWS được ánh xạ thành response phù hợp, không lộ nội bộ.
-- SQS message và response API không lệch contract.
+- SQS message và response API không lệch contract (Thẩm định `sqs-job-message.schema.json` v1).
+- Trích xuất/sinh `X-Correlation-ID`, làm giàu ngữ cảnh MDC (`corr`, `user`, `prj`, `vid`).
+- Bảo mật log & Masking tự động regex che giấu credentials, Bearer tokens, S3 Presigned URL signatures.
 
 ## Definition of Done cho task Backend
 

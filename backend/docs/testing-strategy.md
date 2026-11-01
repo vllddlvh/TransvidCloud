@@ -25,6 +25,9 @@ Mỗi acceptance criterion phải có ít nhất một cách kiểm chứng ho�
 |---|---|---|---|
 | Project build & context load thành công | `./mvnw -B clean verify` | `PASS` | `TransvidCloudBackendApplicationTests` |
 | Ứng dụng khởi chạy và truy cập được trên `localhost:8080/api/actuator/health` | `curl -i http://localhost:8080/api/actuator/health` | `PASS` | HTTP 200 `{"status":"UP"}` |
+| Quan sát hệ thống: X-Correlation-ID và MDC enrichment tự động | `./mvnw test -Dtest=ObservabilityLoggingIT` | `PASS` | `ObservabilityLoggingIT` (3/3 tests) |
+| Bảo mật Log: Che giấu mật khẩu, API key, token, chữ ký S3 | `./mvnw test -Dtest=MaskingMessageConverterTest,StructuredLoggingLayoutTest` | `PASS` | `MaskingMessageConverterTest` (8/8 tests) |
+| Vòng đời Video trọn vẹn, cô lập đa người thuê & Hợp đồng SQS v1 | `./mvnw test -Dtest=VideoFullLifecycleIT` | `PASS` | `VideoFullLifecycleIT` (3/3 tests LocalStack) |
 
 ## Zero Regression & Real Verification Policy
 

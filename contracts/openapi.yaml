@@ -71,6 +71,24 @@ paths:
         "401":
           $ref: "#/components/responses/UnauthorizedError"
 
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: Lấy thông tin tài khoản của phiên đăng nhập hiện tại
+      description: Trích xuất thông tin người dùng từ JWT Access Token trong header Authorization Bearer.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Thông tin tài khoản người dùng hiện tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSummary"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
   /projects:
     get:
       tags: [Projects]
@@ -455,6 +473,22 @@ components:
         minimum: 1
         maximum: 100
         default: 20
+    CorrelationIdParam:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Mã tương quan do client gửi lên để truy vết giao dịch xuyên suốt hệ thống (F-009)
+      schema:
+        type: string
+        maxLength: 128
+        example: 550e8400-e29b-41d4-a716-446655440000
+
+  headers:
+    XCorrelationIdHeader:
+      description: Mã tương quan request luôn có mặt trong mọi phản hồi HTTP giúp đối soát log (F-009)
+      schema:
+        type: string
+        example: 550e8400-e29b-41d4-a716-446655440000
 
   responses:
     BadRequestError:
@@ -509,12 +543,13 @@ components:
         email:
           type: string
           format: email
+          maxLength: 255
           example: user@example.com
         password:
           type: string
           format: password
           minLength: 8
-          maxLength: 100
+          maxLength: 72
           example: Secret123!
         fullName:
           type: string

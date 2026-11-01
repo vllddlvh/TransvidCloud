@@ -7,4 +7,10 @@ public record ApiKeyCreatedResponse(
         String rawKey,
         String keyPrefix,
         String createdAt
-) {}
+) {
+    @Override
+    public String toString() {
+        return "ApiKeyCreatedResponse[keyHash=" + keyHash + ", projectId=" + projectId + ", name=" + name
+                + ", rawKey=[PROTECTED], keyPrefix=" + keyPrefix + ", createdAt=" + createdAt + "]";
+    }
+}

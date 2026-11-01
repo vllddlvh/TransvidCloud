@@ -161,6 +161,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ErrorResponse> handleAppException(AppException ex) {
         ErrorCode errorCode = ex.getErrorCode();
+        log.warn("AppException xử lý: code={}, message={}", errorCode.getCode(), ex.getMessage());
         ErrorResponse response = new ErrorResponse(
                 errorCode.getCode(),
                 ex.getMessage() != null ? ex.getMessage() : errorCode.getDefaultMessage(),

@@ -43,6 +43,10 @@ public class TvcProperties {
     @NotNull
     private OutboxProperties outbox = new OutboxProperties();
 
+    @Valid
+    @NotNull
+    private LoggingProperties logging = new LoggingProperties();
+
     @Getter
     @Setter
     public static class AwsProperties {
@@ -155,5 +159,11 @@ public class TvcProperties {
 
         @Min(1)
         private int batchSize = 10;
+    }
+
+    @Getter
+    @Setter
+    public static class LoggingProperties {
+        private String format = "text";
     }
 }

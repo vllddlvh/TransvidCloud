@@ -9,6 +9,7 @@ import com.transvidcloud.backend.apikey.repository.ApiKeyRepository;
 import com.transvidcloud.backend.apikey.util.ApiKeyGenerator;
 import com.transvidcloud.backend.common.exception.AppException;
 import com.transvidcloud.backend.common.exception.ErrorCode;
+import com.transvidcloud.backend.common.logging.LogContext;
 import com.transvidcloud.backend.project.service.ProjectService;
 import java.time.Instant;
 import java.util.List;
@@ -39,6 +40,8 @@ public class ApiKeyService {
      * Yêu cầu người dùng hiện tại phải là chủ sở hữu Project và Project chưa vượt quá 5 keys.
      */
     public ApiKeyCreatedResponse createApiKey(String projectId, CreateApiKeyRequest request, String currentUserId) {
+        LogContext.setUserId(currentUserId);
+        LogContext.setProjectId(projectId);
         log.info("Bắt đầu tạo API Key mới cho Project: projectId={}, userId={}", projectId, currentUserId);
 
         // 1. Kiểm tra tồn tại, trạng thái ACTIVE và quyền sở hữu Project
@@ -76,6 +79,8 @@ public class ApiKeyService {
      * Chỉ trả về metadata và keyPrefix, tuyệt đối không bao giờ trả về rawKey.
      */
     public ApiKeyListResponse listApiKeys(String projectId, String currentUserId) {
+        LogContext.setUserId(currentUserId);
+        LogContext.setProjectId(projectId);
         // Kiểm tra quyền sở hữu Project
         projectService.getProject(projectId, currentUserId);
 
@@ -88,6 +93,8 @@ public class ApiKeyService {
      * Khóa bị xóa sẽ mất hiệu lực tức thì trên toàn hệ thống.
      */
     public void revokeApiKey(String projectId, String keyHash, String currentUserId) {
+        LogContext.setUserId(currentUserId);
+        LogContext.setProjectId(projectId);
         log.info("Yêu cầu thu hồi API Key: projectId={}, keyHash={}, userId={}", projectId, keyHash, currentUserId);
 
         // 1. Kiểm tra quyền sở hữu Project

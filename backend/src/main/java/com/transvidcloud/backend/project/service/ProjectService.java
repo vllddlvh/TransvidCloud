@@ -2,6 +2,7 @@ package com.transvidcloud.backend.project.service;
 
 import com.transvidcloud.backend.common.exception.AppException;
 import com.transvidcloud.backend.common.exception.ErrorCode;
+import com.transvidcloud.backend.common.logging.LogContext;
 import com.transvidcloud.backend.project.dto.CreateProjectRequest;
 import com.transvidcloud.backend.project.dto.ProjectListResponse;
 import com.transvidcloud.backend.project.dto.ProjectResponse;
@@ -39,6 +40,8 @@ public class ProjectService {
      */
     public ProjectResponse createProject(CreateProjectRequest request, String ownerId) {
         String projectId = "prj_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        LogContext.setUserId(ownerId);
+        LogContext.setProjectId(projectId);
         String now = Instant.now().toString();
 
         String trimmedDescription = request.description() != null && !request.description().isBlank()
@@ -73,6 +76,7 @@ public class ProjectService {
      * @return ProjectListResponse chứa mảng items
      */
     public ProjectListResponse listProjects(String ownerId) {
+        LogContext.setUserId(ownerId);
         List<ProjectItem> items = projectRepository.findByOwnerId(ownerId);
         return projectMapper.toProjectListResponse(items);
     }
@@ -143,6 +147,8 @@ public class ProjectService {
      * Hàm phụ trợ kiểm tra sự tồn tại của Project, trạng thái hoạt động và quyền sở hữu.
      */
     private ProjectItem getProjectAndValidateAccess(String projectId, String currentUserId) {
+        LogContext.setUserId(currentUserId);
+        LogContext.setProjectId(projectId);
         ProjectItem item = projectRepository.findById(projectId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
 

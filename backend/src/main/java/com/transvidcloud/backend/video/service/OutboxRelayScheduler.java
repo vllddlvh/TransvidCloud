@@ -1,9 +1,11 @@
 package com.transvidcloud.backend.video.service;
 
 import com.transvidcloud.backend.common.config.TvcProperties;
+import com.transvidcloud.backend.common.logging.LogContext;
 import com.transvidcloud.backend.video.entity.OutboxItem;
 import com.transvidcloud.backend.video.repository.OutboxRepository;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -32,6 +34,7 @@ public class OutboxRelayScheduler {
             return;
         }
 
+        LogContext.setCorrelationId("sched-outbox-" + UUID.randomUUID());
         int batchSize = tvcProperties.getOutbox().getBatchSize();
         try {
             List<OutboxItem> pendingEvents = outboxRepository.findPendingOutboxEvents(batchSize);
@@ -54,6 +57,8 @@ public class OutboxRelayScheduler {
                     publishedCount, pendingEvents.size());
         } catch (Exception ex) {
             log.error("Lỗi ngoại lệ trong tiến trình OutboxRelayScheduler: {}", ex.getMessage(), ex);
+        } finally {
+            LogContext.clear();
         }
     }
 }
