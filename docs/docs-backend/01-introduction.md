@@ -23,7 +23,7 @@ Hai nhóm dùng chung nghiệp vụ và processing pipeline.
 - Không proxy toàn bộ byte video qua API.
 - Không chạy FFmpeg/transcoding trong HTTP request.
 - Không consume queue hay thực thi job video; việc này thuộc Worker.
-- Không tự định nghĩa lại schema API, SQS, trạng thái hoặc S3 key đã công bố trong `contracts/`.
+- Không tự định nghĩa lại schema API, SQS, trạng thái hoặc S3 key đã công bố trong `docs/contracts/`.
 
 ## Công nghệ
 

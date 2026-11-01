@@ -18,7 +18,7 @@ make infra
 make smoke
 ```
 
-Xem root [`../README.md`](../README.md) và tài liệu triển khai local trong `../docs/` để biết đầy đủ cấu hình Docker/LocalStack. Sau khi infrastructure local sẵn sàng, khởi chạy Backend bằng lệnh được định nghĩa trong project/backend docs.
+Xem root [`../../README.md`](../../README.md) và hướng dẫn triển khai local ([2. LOCAL_AND_CICD](../introduction/2.%20LOCAL_AND_CICD.md)) để biết đầy đủ cấu hình Docker/LocalStack. Sau khi infrastructure local sẵn sàng, khởi chạy Backend bằng lệnh được định nghĩa trong project/backend docs.
 
 ## Local và cloud
 
@@ -33,4 +33,4 @@ Xem root [`../README.md`](../README.md) và tài liệu triển khai local trong
 2. Thực hiện thay đổi nhỏ theo module.
 3. Chạy các test phù hợp và contract/e2e test khi liên quan.
 4. Cập nhật tài liệu nếu thay đổi behavior, dependency hoặc cách chạy.
-5. Nếu thay đổi API/SQS/state/DynamoDB key/S3 key/upload limit, xem quy trình thay đổi trong `contracts/README.md`.
+5. Nếu thay đổi API/SQS/state/DynamoDB key/S3 key/upload limit, xem quy trình thay đổi trong [`../contracts/README.md`](../contracts/README.md).

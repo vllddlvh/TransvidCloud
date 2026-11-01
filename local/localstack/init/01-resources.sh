@@ -18,7 +18,7 @@ cat > /tmp/queue-attrs.json <<JSON
 JSON
 awslocal sqs create-queue --queue-name "${P}-jobs" --attributes file:///tmp/queue-attrs.json >/dev/null
 
-echo "[init] DynamoDB tables (theo contracts/dynamodb-tables.md)"
+echo "[init] DynamoDB tables (theo docs/contracts/dynamodb-tables.md)"
 awslocal dynamodb create-table --table-name "${P}-users" \
   --attribute-definitions AttributeName=userId,AttributeType=S AttributeName=email,AttributeType=S \
   --key-schema AttributeName=userId,KeyType=HASH \

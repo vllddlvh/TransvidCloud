@@ -15,8 +15,8 @@ cp .env.example .env     # rồi điền LOCALSTACK_AUTH_TOKEN (xem docs/LOCAL_A
 make infra      # LocalStack: S3, SQS+DLQ, DynamoDB
 make smoke      # kiểm tra tài nguyên đã tạo
 ```
-Chi tiết (chạy full stack, kiểm thử, CI/CD lên AWS): [`docs/LOCAL_AND_CICD.md`](2.%20LOCAL_AND_CICD.md)
-Việc cần làm của từng nhóm: [`docs/EPICS.md`](1.%20Timelines.md)
+Chi tiết (chạy full stack, kiểm thử, CI/CD lên AWS): [`docs/introduction/2. LOCAL_AND_CICD.md`](docs/introduction/2.%20LOCAL_AND_CICD.md)
+Việc cần làm của từng nhóm: [`docs/introduction/1. Timelines.md`](docs/introduction/1.%20Timelines.md)
 
 ## Cấu trúc repo
 ```
@@ -32,9 +32,9 @@ transvidcloud/
 ├── infra/terraform/       hạ tầng AWS (modules + envs dev/demo)
 ├── local/                 chỉ phục vụ chạy local: init LocalStack, nginx, script test
 ├── scripts/               script deploy dùng chung (SSM, Instance Refresh)
-├── tests/e2e/             test đầu-cuối chạy được cả local lẫn cloud
-├── docs/                  tài liệu, ADR, báo cáo
-└── .github/               CI/CD, CODEOWNERS
+├── tests/e2e/               kịch bản test đầu-cuối (local + cloud; runner đang dựng)
+├── docs/                    tài liệu, báo cáo
+└── .github/               CI/CD, quy định duyệt PR
 ```
 
 | Thư mục | Làm gì | Chủ |
@@ -43,11 +43,11 @@ transvidcloud/
 | `backend/` | API, xác thực, project/video, presigned URL, đẩy job vào SQS | Phương |
 | `worker/` | Chuyển mã HLS 360p/720p, thumbnail, cập nhật trạng thái | Vũ |
 | `frontend/` | Giao diện SaaS tối thiểu, trình phát HLS | Vũ |
-| `infra/` | Terraform tạo S3, SQS, DynamoDB, VPC, IAM, EC2/ASG, CloudFront, CloudWatch | Lưu + Nguyên |
+| `infra/` | Terraform tạo S3, SQ S, DynamoDB, VPC, IAM, EC2/ASG, CloudFront, CloudWatch | Lưu + Nguyên |
 | `local/` + Docker | Giả lập AWS trên máy, Dockerfile, compose; đường đi local -> cloud | Lưu |
 | `scripts/` | Deploy API (SSM) và Worker (Instance Refresh) | Nguyên |
-| `tests/e2e/` | Kịch bản upload -> COMPLETED, chạy cả local và cloud | Lưu (App viết kịch bản) |
-| `docs/` | Hướng dẫn, ADR, báo cáo LaTeX | Cả nhóm |
+| `tests/e2e/` | Kịch bản upload -> COMPLETED cho local và cloud (runner chưa có) | Lưu (App viết kịch bản) |
+| `docs/` | Hướng dẫn, báo cáo | Cả nhóm |
 | `.github/` | Pipeline CI/CD, quy định duyệt PR | Nguyên |
 
 Mỗi thư mục có `README.md` riêng mô tả trách nhiệm và quy tắc.
@@ -61,5 +61,5 @@ Mỗi thư mục có `README.md` riêng mô tả trách nhiệm và quy tắc.
 
 ## Quy ước Git
 - Nhánh: `main` (ổn định), nhánh làm việc `feature/<module>-<mô-tả>` hoặc theo tên cá nhân.
-- Mọi thay đổi vào `main` qua Pull Request; CODEOWNERS yêu cầu người phụ trách thư mục duyệt.
+- Mọi thay đổi vào `main` qua Pull Request; người phụ trách thư mục duyệt (review trực tiếp trên PR, không dùng CODEOWNERS).
 - Commit ngắn gọn theo dạng `module: nội dung` (vd: `worker: thêm transcode 720p`).

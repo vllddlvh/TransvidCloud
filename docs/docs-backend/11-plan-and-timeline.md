@@ -1,13 +1,14 @@
 # 11. Backend Plan & Timeline
 
-Kế hoạch này là workstream Backend, phải khớp với master timeline/plan dùng chung trong `../docs/`. Đây là trình tự và tiêu chí bàn giao, không thay thế lịch tổng thể của nhóm.
+Hiện tại **tuần 7**, học kỳ kết thúc và nộp BTL trong **tuần 10**. Kế hoạch Backend theo [timeline chung v4](../introduction/1.%20Timelines.md); sprint là giai đoạn ngắn trong tuần 7–9, không phải bốn tuần mới. Phương rà phần đã làm và chỉ trừ effort khi có code/kết quả kiểm chứng.
 
 | Giai đoạn | Trọng tâm Backend | Deliverable / exit criteria |
 |---|---|---|
-| **Sprint 1 — Contract & foundation** | Chốt API/data/state assumptions; dựng Spring Boot skeleton và cấu hình cơ bản; chia module và test skeleton. | Contract có người review; project chạy được local; ranh giới module và các quyết định mở được ghi lại. |
-| **Sprint 2 — Upload & dispatch** | Project/video metadata, presigned URL, confirm, DynamoDB và SQS producer. | Video upload thẳng S3; confirm tạo trạng thái/job đúng contract; luồng lỗi quan trọng có test. |
-| **Sprint 3 — SaaS/API integration** | Auth/authorization, list/detail/status/assets, pagination và tích hợp Frontend/Worker. | User truy vấn đúng tài nguyên; cả flow upload → processing → result hoạt động qua API. |
-| **Sprint 4 — Reliability & verification** | Sửa tích hợp, retry/idempotency cases, contract/e2e tests, lỗi và logging. | Demo ổn định; có bằng chứng test cho ownership, duplicate/failure cases và trạng thái/assets. |
+| **Tuần 7 / Sprint 1 — Nền tảng** | Chốt API/data/state; dựng Spring Boot và cấu hình; bắt đầu auth/ownership, project/video để mở khóa frontend. | Contract được review; chạy local; bàn giao cổng/env/health và quyền AWS. |
+| **Cuối tuần 7–8 / Sprint 2 — Upload và tích hợp AWS** | Hoàn thiện auth/ownership, presigned upload, confirm, DynamoDB/SQS; list/detail/status/assets và tích hợp Worker/Frontend. | M2 cuối tuần 8: pipeline AWS hoàn chỉnh; kiểm tra tài nguyên thuộc người dùng và các lỗi confirm; retry/idempotency cơ bản hoạt động. |
+| **Đầu tuần 9 / Sprint 3 — Tích hợp edge** | Kiểm tra auth/header/cache qua CloudFront; hỗ trợ frontend, log/metric và scaling. | M3: SaaS/API chạy cùng origin; không chờ đến giai đoạn này mới làm auth. |
+| **Phần còn lại tuần 9 / Sprint 4 — Kiểm chứng** | E2E, duplicate/failure/ownership cases, hỗ trợ benchmark/chaos; sửa lỗi và viết kết quả báo cáo. | M4: số liệu, báo cáo đầy đủ, demo hai lần và đóng băng phiên bản. |
+| **Tuần 10 — Nộp bài** | Rà hướng dẫn API/source, liên kết và phiên bản nộp; chỉ sửa lỗi chặn nộp/demo. | M5: hồ sơ sẵn sàng đầu tuần, nộp đúng hạn và lưu xác nhận. |
 
 ## Dependencies
 
@@ -21,6 +22,6 @@ Kế hoạch này là workstream Backend, phải khớp với master timeline/pl
 - OpenAPI và các contract hiện còn DRAFT.
 - Update DynamoDB và SendMessage không nguyên tử; confirm/recovery cần quyết định rõ.
 - Authentication, ownership và luồng upload nếu hoàn thiện muộn sẽ chặn tích hợp.
-- Baseline tổng dự án 43 person-days vượt capacity khả dụng ước tính; giữ P0 trước, cắt P1/P2 theo quyết định nhóm nếu tiến độ thực tế yêu cầu.
+- Baseline P0 toàn nhóm khoảng 34 pd, trong khi capacity tối đa tuần 7–9 ở mức 2 ngày/người/tuần là 19,2 pd; phải trừ phần đã làm rồi ước lượng lại. Webhook/C6 ngoài cam kết nộp; giữ luồng cốt lõi và kiểm chứng trước.
 
 Mỗi sprint nên tích hợp sớm với ít nhất một module khác; không đợi tới cuối mới nối Backend với Worker/Frontend.

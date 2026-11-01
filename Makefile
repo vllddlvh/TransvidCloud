@@ -29,17 +29,24 @@ worker-scale: ## Thử competing consumers: make worker-scale N=3
 smoke: ## Kiểm tra LocalStack đã có đủ bucket/queue/bảng
 	bash ./local/scripts/smoke-test.sh
 
-chaos: ## Kịch bản kill worker giữa chừng (retry/DLQ)
-	bash ./local/scripts/chaos-kill-worker.sh
+chaos: ## Chaos worker (mặc định trong container: SIGTERM/SIGKILL/DLQ/competing)
+	TVC_CHAOS_RUNTIME=$${TVC_CHAOS_RUNTIME:-docker} bash ./local/scripts/chaos-kill-worker.sh
 
 test: ## Unit test các module đã có code
 	@if [ -f backend/mvnw ]; then (cd backend && ./mvnw -q test); else echo "backend: chưa có code, bỏ qua"; fi
 	@if [ -f worker/go.mod ]; then (cd worker && go test ./...); else echo "worker: chưa có code, bỏ qua"; fi
 	@if [ -f frontend/package.json ]; then (cd frontend && npm test --if-present); else echo "frontend: chưa có code, bỏ qua"; fi
 
-e2e: up smoke ## Chạy e2e local (bổ sung tests/e2e khi pipeline xong)
+e2e: ## E2E qua API thật (A4; cần backend + worker đang chạy)
+	bash ./tests/e2e/run.sh api
+
+e2e-worker: ## E2E worker integration (LocalStack + image worker + playback /media)
+	bash ./tests/e2e/run.sh worker
+
+bench: ## Benchmark local 1 vs 2 worker (không thay thế M4 trên AWS)
+	bash ./tests/bench/run.sh
 
 tf-plan: ## terraform plan cho môi trường dev
 	cd infra/terraform/envs/dev && terraform init && terraform plan
 
-.PHONY: help infra up down reset logs worker-scale smoke chaos test e2e tf-plan
+.PHONY: help infra up down reset logs worker-scale smoke chaos test e2e e2e-worker bench tf-plan
