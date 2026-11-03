@@ -8,6 +8,7 @@ Bộ tài liệu dành cho Lưu và Nguyên, mô tả đường đi từ môi tr
 | 2 | [Timelines](2.%20Timelines.md) | Thời gian triển khai, phụ thuộc, mốc M0–M5 và phương án giảm phạm vi |
 | 3 | [Designs](3.%20Designs.md) | Kiến trúc local/AWS, dữ liệu, mạng, IAM, edge, scaling và vận hành |
 | 4 | [Implement](4.%20Implement.md) | Các bước dựng local, kiểm thử, đưa lên AWS, rollback và thu dọn |
+| 5 | [Deployment Runbook](5.%20Cloud-Deployment-Runbook.md) | Hướng dẫn từng bước triển khai AWS, bảo vệ credit và FinOps cho Lưu & Nguyên |
 
 ## Cách đọc và nguồn đối chiếu
 

@@ -11,3 +11,4 @@ envs/      dev, demo: gọi cùng modules, chỉ khác biến cấu hình
 - Không commit `*.tfstate`, `*.tfvars` (chỉ `*.tfvars.example`).
 - Chạy: `cd envs/dev && terraform init && terraform plan`; apply sau khi review plan.
 - Key schema bảng DynamoDB, cấu hình SQS phải khớp `docs/contracts/` và `local/localstack/init`.
+- **Runbook chi tiết:** Xem [5. Cloud-Deployment-Runbook.md](../../docs/docs-cloud/5.%20Cloud-Deployment-Runbook.md) để biết các bước thao tác, phân công và kiểm soát FinOps.
