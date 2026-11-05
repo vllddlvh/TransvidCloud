@@ -1,0 +1,36 @@
+// TransVidCloud — Luồng tích hợp Developer API (lớp PaaS) cho ứng dụng bên ngoài
+// Nguồn: docs/contracts/openapi.yaml, docs/docs-common/1. Overall system.md mục 1.3
+// Render: dot -Tpng -Gdpi=160 developer-integration-flow.dot -o developer-integration-flow.png
+digraph DeveloperIntegrationFlow {
+  graph [rankdir=TB, dpi=160, fontname="Helvetica",
+         labelloc="t", fontsize=14,
+         label="PaaS — Developer API: vòng đời tích hợp của ứng dụng bên ngoài",
+         pad=0.35, nodesep=0.4, ranksep=0.45];
+  node  [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled",
+         color="#444444", fillcolor="#f7f7f7", margin="0.15,0.09"];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  subgraph cluster_ext {
+    label="Hệ thống khách hàng (vd. E-learning)"; style="rounded,dashed"; color="#999999";
+    Instructor [label="Giảng viên\nupload bài giảng", fillcolor="#fef7e0"];
+    ExtApp     [label="E-learning Platform\n(API key theo project)", fillcolor="#fef7e0"];
+    Player     [label="E-learning Player\n(iframe / HLS)", fillcolor="#fef7e0"];
+  }
+
+  subgraph cluster_svc {
+    label="TransVidCloud (không lộ chi tiết AWS)"; style="rounded"; color="#666666";
+    API     [label="Developer API\nPOST /videos · POST /confirm · GET /videos/{id}", fillcolor="#fdece6"];
+    Core    [label="Lõi xử lý\nS3 → SQS → Worker (FFmpeg) → S3/DynamoDB", fillcolor="#f3e8fd"];
+  }
+
+  Instructor -> ExtApp [label="upload video"];
+
+  ExtApp -> API [label="① tạo project + API key"];
+  ExtApp -> API [label="② POST /projects/{id}/videos\n→ presigned URL"];
+  ExtApp -> API [label="③ POST /videos/{id}/confirm\n→ job vào queue"];
+  API -> Core   [label="④ submit job", style=dashed];
+  ExtApp -> API [label="⑤ poll GET /videos/{id}\n(tới khi COMPLETED)", style=dashed];
+  API -> ExtApp [label="⑥ assets: master.m3u8\n+ thumbnail + renditions"];
+
+  ExtApp -> Player [label="⑦ nhúng iframe / HLS URL"];
+}

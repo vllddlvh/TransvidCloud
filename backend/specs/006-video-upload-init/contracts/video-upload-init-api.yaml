@@ -1,0 +1,240 @@
+openapi: 3.0.3
+info:
+  title: TransvidCloud Video Upload Init API Contract
+  version: 1.0.0
+  description: Trích xuất hợp đồng REST API cho tính năng Khởi tạo Upload Video & Cấp S3 Presigned PUT URL (F-006)
+
+paths:
+  /projects/{projectId}/videos:
+    post:
+      tags: [Videos]
+      operationId: initVideoUpload
+      summary: Khởi tạo Video và nhận S3 Presigned PUT URL
+      description: |
+        Kiểm tra giới hạn dung lượng (`sizeBytes <= 209715200`) và định dạng (`contentType`).
+        Tạo bản ghi Video ở trạng thái `UPLOADING` và trả về Presigned PUT URL có hiệu lực 15 phút (ký kèm `Content-Length` và `Content-Type`).
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: prj_1c05d9e2a3f4
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitVideoRequest"
+      responses:
+        "201":
+          description: Khởi tạo Video và cấp Presigned URL thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseInitVideo"
+        "400":
+          description: Dữ liệu yêu cầu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "401":
+          description: Chưa xác thực hoặc token/key không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "403":
+          description: Không có quyền truy cập Project này
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "404":
+          description: Không tìm thấy Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "413":
+          description: Dung lượng file vượt quá giới hạn tối đa 200MB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "422":
+          description: Định dạng video hoặc phần mở rộng tệp tin không được hỗ trợ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    InitVideoRequest:
+      type: object
+      required: [title, filename, sizeBytes, contentType]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Bài giảng Chương 1 - Điện toán đám mây
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Tên file gốc để xác định phần mở rộng hợp lệ (`mp4`, `mov`, `mkv`, `webm`)
+          example: lecture-01.mp4
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 209715200
+          description: Dung lượng file tính bằng byte (tối đa 200 MB = 209715200 bytes)
+          example: 52428800
+        contentType:
+          type: string
+          enum:
+            - video/mp4
+            - video/quicktime
+            - video/x-matroska
+            - video/webm
+          example: video/mp4
+
+    PresignedUploadInfo:
+      type: object
+      required: [presignedUrl, method, expiresInSeconds, requiredHeaders]
+      properties:
+        presignedUrl:
+          type: string
+          format: uri
+          description: URL S3 Presigned PUT để client đẩy trực tiếp file lên bucket input
+        method:
+          type: string
+          enum: [PUT]
+          example: PUT
+        expiresInSeconds:
+          type: integer
+          example: 900
+        requiredHeaders:
+          type: object
+          additionalProperties:
+            type: string
+          description: Các HTTP header mà client bắt buộc gửi khớp khi gọi PUT lên `presignedUrl`
+          example:
+            Content-Type: video/mp4
+            Content-Length: "52428800"
+
+    VideoStatus:
+      type: string
+      enum:
+        - UPLOADING
+        - PENDING
+        - PROCESSING
+        - COMPLETED
+        - FAILED_VALIDATION
+        - FAILED_TRANSCODE
+        - FAILED_STORAGE
+
+    VideoResponse:
+      type: object
+      required: [videoId, projectId, title, status, sizeBytes, contentType, attemptCount, createdAt, updatedAt]
+      properties:
+        videoId:
+          type: string
+          example: vid_4a77e1c8d102
+        projectId:
+          type: string
+          example: prj_1c05d9e2a3f4
+        title:
+          type: string
+          example: Bài giảng Chương 1 - Điện toán đám mây
+        status:
+          $ref: "#/components/schemas/VideoStatus"
+        sizeBytes:
+          type: integer
+          format: int64
+          example: 52428800
+        contentType:
+          type: string
+          example: video/mp4
+        attemptCount:
+          type: integer
+          example: 0
+        errorCode:
+          type: string
+          nullable: true
+          example: null
+        assets:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          example: null
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T09:15:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T09:15:00Z"
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    InitVideoResponse:
+      type: object
+      required: [video, upload]
+      properties:
+        video:
+          $ref: "#/components/schemas/VideoResponse"
+        upload:
+          $ref: "#/components/schemas/PresignedUploadInfo"
+
+    ApiResponseInitVideo:
+      type: object
+      required: [code, message, result]
+      properties:
+        code:
+          type: integer
+          example: 1000
+        message:
+          type: string
+          example: Success
+        result:
+          $ref: "#/components/schemas/InitVideoResponse"
+
+    ApiErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: UPLOAD_LIMIT_EXCEEDED
+        message:
+          type: string
+          example: Dung lượng tải lên vượt quá giới hạn tối đa cho phép
+        timestamp:
+          type: string
+          format: date-time

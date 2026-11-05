@@ -1,0 +1,34 @@
+// TransVidCloud — Luồng upload presigned của SaaS (video không qua API server)
+// Nguồn: docs/contracts/openapi.yaml, upload-limits.md, docs/docs-frontend/3. Pages & Features.md
+// Render: dot -Tpng -Gdpi=160 saas-upload-flow.dot -o saas-upload-flow.png
+digraph SaasUploadFlow {
+  graph [rankdir=TB, dpi=160, fontname="Helvetica",
+         labelloc="t", fontsize=14,
+         label="SaaS — Luồng upload presigned (byte video không đi qua API)",
+         pad=0.35, nodesep=0.4, ranksep=0.45];
+  node  [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled",
+         color="#444444", fillcolor="#f7f7f7", margin="0.15,0.09"];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  Browser [label="Trình duyệt (React)", fillcolor="#e8f0fe"];
+  API     [label="API Spring Boot", fillcolor="#fdece6"];
+  S3In    [label="S3 input", shape=cylinder, fillcolor="#fff3e0"];
+  DDB     [label="DynamoDB", shape=cylinder, fillcolor="#fff3e0"];
+  SQS     [label="SQS", shape=box, fillcolor="#f3e8fd"];
+  Worker  [label="Worker (Go + FFmpeg)", fillcolor="#f3e8fd"];
+  S3Out   [label="S3 output\nHLS 360p/720p + thumbnail", shape=cylinder, fillcolor="#fff3e0"];
+
+  Browser -> API    [label="① POST /projects/{id}/videos\ndeclare sizeBytes, contentType"];
+  API     -> Browser [label="② presigned URL (hạn 15 phút)\n+ videoId, trạng thái UPLOADING"];
+  API     -> DDB    [label="③ tạo bản ghi UPLOADING"];
+  Browser -> S3In   [label="④ PUT file thẳng lên S3\n(≤200MB, mp4/mov/mkv/webm)"];
+  Browser -> API    [label="⑤ POST /videos/{id}/confirm"];
+  API     -> S3In   [label="⑥ HeadObject kiểm tra"];
+  API     -> DDB    [label="⑦ UPLOADING → PENDING"];
+  API     -> SQS    [label="⑧ gửi job message"];
+  SQS     -> Worker [label="⑨ nhận job → PROCESSING"];
+  Worker  -> S3In   [label="⑩ download input"];
+  Worker  -> S3Out  [label="⑪ transcode + upload output"];
+  Worker  -> DDB    [label="⑫ COMPLETED + assets, ACK SQS"];
+  Browser -> API    [label="⑬ poll GET /videos/{id}\n(mỗi 3–5 giây)", style=dashed];
+}

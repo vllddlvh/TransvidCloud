@@ -1,0 +1,251 @@
+openapi: 3.0.3
+info:
+  title: TransVidCloud Project Management API Contract
+  version: 0.1.0
+  description: Trích xuất hợp đồng API quản lý Project (CRUD & Ownership Isolation) cho Feature F-004 từ contracts/openapi.yaml chính thức.
+
+paths:
+  /projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: Liệt kê danh sách Project đang hoạt động của người dùng hiện tại
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Danh sách Project thuộc quyền sở hữu của user (mới nhất lên đầu)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: Tạo Project mới
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Tạo Project thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /projects/{projectId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+        example: prj_1c05d9a2b4e8
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: Xem chi tiết một Project
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Thông tin chi tiết Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      summary: Cập nhật thông tin hoặc cấu hình Webhook của Project
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: Cập nhật Project thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    delete:
+      tags: [Projects]
+      operationId: deleteProject
+      summary: Xóa Project (Soft Delete)
+      description: Xóa Project thuộc quyền sở hữu của user (từ chối 409 nếu còn video đang xử lý dở dang).
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Đã thực hiện Soft Delete Project thành công
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          example: E-Learning Course Videos
+        description:
+          type: string
+          maxLength: 500
+          example: Kho video bài giảng học kỳ 1
+        webhookUrl:
+          type: string
+          format: uri
+          description: URL nhận callback khi video hoàn tất xử lý (P1)
+          example: https://elearning.example.com/webhooks/transvidcloud
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 500
+        webhookUrl:
+          type: string
+          format: uri
+          nullable: true
+
+    ProjectResponse:
+      type: object
+      required: [projectId, ownerId, name, createdAt, updatedAt]
+      properties:
+        projectId:
+          type: string
+          example: prj_1c05d9a2b4e8
+        ownerId:
+          type: string
+          example: usr_8b31a2
+        name:
+          type: string
+          example: E-Learning Course Videos
+        description:
+          type: string
+          example: Kho video bài giảng học kỳ 1
+        webhookUrl:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:05:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:05:00Z"
+
+    ProjectListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectResponse"
+
+    ErrorResponse:
+      type: object
+      required: [code, message, status]
+      properties:
+        code:
+          type: integer
+          example: 1007
+        message:
+          type: string
+          example: Access denied
+        status:
+          type: string
+          example: FORBIDDEN
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:05:00Z"
+
+  responses:
+    BadRequestError:
+      description: Dữ liệu đầu vào không hợp lệ (VALIDATION_ERROR)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnauthorizedError:
+      description: Chưa xác thực hoặc Access Token không hợp lệ (UNAUTHENTICATED)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ForbiddenError:
+      description: Không có quyền truy cập tài nguyên thuộc người dùng khác (ACCESS_DENIED)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFoundError:
+      description: Không tìm thấy tài nguyên yêu cầu (RESOURCE_NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ConflictError:
+      description: Xung đột tài nguyên đang được sử dụng (RESOURCE_IN_USE)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

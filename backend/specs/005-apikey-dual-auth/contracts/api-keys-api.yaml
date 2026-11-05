@@ -1,0 +1,199 @@
+openapi: 3.0.3
+info:
+  title: TransVidCloud API - API Keys & Dual Security Module
+  version: 0.1.0
+  description: Trích xuất hợp đồng REST API cho tính năng Quản lý API Key và Xác thực Dual Security (F-005) từ SSOT contracts/openapi.yaml.
+
+servers:
+  - url: /api
+    description: Context path mặc định của Backend
+
+paths:
+  /projects/{projectId}/api-keys:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+        example: prj_1c05d9
+    get:
+      tags: [API Keys]
+      operationId: listApiKeys
+      summary: Liệt kê các API Key của Project
+      description: Chỉ trả về metadata và keyHash (không bao giờ trả lại rawKey sau khi tạo).
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Danh sách API Key của Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    post:
+      tags: [API Keys]
+      operationId: createApiKey
+      summary: Tạo API Key mới cho Project
+      description: Sinh API Key mới, chỉ lưu bản băm SHA-256 (keyHash) vào DynamoDB và trả về rawKey duy nhất một lần trong response này. Tối đa 5 keys/project.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiKeyRequest"
+      responses:
+        "201":
+          description: Tạo API Key thành công (lưu lại rawKey ngay vì sẽ không hiển thị lại)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyCreatedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /projects/{projectId}/api-keys/{keyHash}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+        example: prj_1c05d9
+      - name: keyHash
+        in: path
+        required: true
+        schema:
+          type: string
+        example: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+    delete:
+      tags: [API Keys]
+      operationId: revokeApiKey
+      summary: Thu hồi (xóa) API Key
+      description: Xóa keyHash khỏi bảng apikeys, làm key mất hiệu lực ngay lập tức.
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Đã thu hồi API Key thành công
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Access Token dành cho SaaS Web.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Project API Key (tvc_live_...) dành cho Developer Platform / hệ thống ngoài.
+
+  schemas:
+    CreateApiKeyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: E-Learning Backend Key
+
+    ApiKeyCreatedResponse:
+      type: object
+      required: [keyHash, projectId, name, rawKey, keyPrefix, createdAt]
+      properties:
+        keyHash:
+          type: string
+          example: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        projectId:
+          type: string
+          example: prj_1c05d9
+        name:
+          type: string
+          example: E-Learning Backend Key
+        rawKey:
+          type: string
+          example: tvc_live_7f9a8b2c4d6e1f3a5b7c9d0e2f4a6b8c
+        keyPrefix:
+          type: string
+          example: tvc_live_7f9a...
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:10:00Z"
+
+    ApiKeyMetadataResponse:
+      type: object
+      required: [keyHash, projectId, name, keyPrefix, createdAt]
+      properties:
+        keyHash:
+          type: string
+          example: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        projectId:
+          type: string
+          example: prj_1c05d9
+        name:
+          type: string
+          example: E-Learning Backend Key
+        keyPrefix:
+          type: string
+          example: tvc_live_7f9a...
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T08:10:00Z"
+
+    ApiKeyListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiKeyMetadataResponse"
+
+    ApiResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 1000
+        message:
+          type: string
+          example: Success
+        result:
+          type: object
+
+  responses:
+    BadRequestError:
+      description: Dữ liệu yêu cầu không hợp lệ hoặc vượt quá 5 keys
+    UnauthorizedError:
+      description: Thiếu hoặc sai thông tin xác thực
+    ForbiddenError:
+      description: Không có quyền truy cập tài nguyên
+    NotFoundError:
+      description: Không tìm thấy tài nguyên

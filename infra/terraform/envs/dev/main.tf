@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 terraform {
   required_version = ">= 1.10, < 2.0"
   required_providers {
@@ -75,3 +76,25 @@ output "public_subnet_ids" { value = module.network.public_subnet_ids }
 output "security_group_ids" { value = module.network.security_group_ids }
 output "runtime_roles" { value = module.iam.roles }
 output "instance_profiles" { value = module.iam.instance_profiles }
+=======
+module "network" {
+  source      = "../../modules/network"
+  environment = var.environment
+}
+
+module "storage" {
+  source      = "../../modules/storage"
+  environment = var.environment
+  account_id  = var.account_id
+}
+
+module "queue" {
+  source      = "../../modules/queue"
+  environment = var.environment
+}
+
+module "database" {
+  source      = "../../modules/database"
+  environment = var.environment
+}
+>>>>>>> 6317d81836060cb47572c643c512292ce87cb101

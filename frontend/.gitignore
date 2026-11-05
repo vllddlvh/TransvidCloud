@@ -1,0 +1,9 @@
+clnode_modules/
+dist/
+dist-mock/
+.nginx/
+.env
+.env.*.local
+*.tsbuildinfo
+playwright-report/
+test-results/

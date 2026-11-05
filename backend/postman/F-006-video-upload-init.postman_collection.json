@@ -1,0 +1,846 @@
+{
+  "info": {
+    "_postman_id": "tvc-f006-video-upload-init",
+    "name": "F-006: Khởi tạo Upload Video & Cấp S3 Presigned PUT URL",
+    "description": "Bộ Postman Collection chuyên biệt cho Feature F-006: Khởi tạo Upload Video & Cấp S3 Presigned PUT URL (Epic A3). Kiểm thử toàn diện 16 kịch bản từ khâu Setup người dùng, kiểm tra Bearer JWT, kiểm tra đẩy byte thật lên LocalStack S3 qua Presigned PUT URL, kiểm tra X-API-Key, giới hạn dung lượng 200MB, định dạng container video, và cô lập đa người thuê (Multi-tenant isolation).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api",
+      "type": "string"
+    },
+    {
+      "key": "tokenA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectAId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectBId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "apiKeyA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "apiKeyB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "videoId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "presignedUrl",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Setup - Đăng ký tài khoản Người dùng A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về accessToken hợp lệ cho User A\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('tokenA', jsonData.accessToken);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user.video.a.{{$timestamp}}@transvidcloud.io\",\n  \"password\": \"Password123@\",\n  \"fullName\": \"Chủ Sở Hữu Video A\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        },
+        "description": "Đăng ký Người dùng A để tạo phiên làm việc JWT Bearer token."
+      }
+    },
+    {
+      "name": "02. Setup - Đăng ký tài khoản Người dùng B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về accessToken hợp lệ cho User B\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('tokenB', jsonData.accessToken);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user.video.b.{{$timestamp}}@transvidcloud.io\",\n  \"password\": \"Password123@\",\n  \"fullName\": \"Chủ Sở Hữu Video B\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        },
+        "description": "Đăng ký Người dùng B để kiểm tra cô lập đa người thuê (Multi-tenant)."
+      }
+    },
+    {
+      "name": "03. Setup - User A tạo Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"ProjectId có tiền tố prj_\", function () {",
+              "    pm.expect(jsonData.projectId).to.match(/^prj_/);",
+              "    pm.expect(jsonData.name).to.eql('Dự án Video Alpha');",
+              "});",
+              "if (jsonData.projectId) {",
+              "    pm.collectionVariables.set('projectAId', jsonData.projectId);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Dự án Video Alpha\",\n  \"description\": \"Chứa video bài giảng F-006\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "User A tạo Project Alpha để khởi tạo video."
+      }
+    },
+    {
+      "name": "04. Setup - User B tạo Project B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"ProjectId có tiền tố prj_\", function () {",
+              "    pm.expect(jsonData.projectId).to.match(/^prj_/);",
+              "    pm.expect(jsonData.name).to.eql('Dự án Video Beta');",
+              "});",
+              "if (jsonData.projectId) {",
+              "    pm.collectionVariables.set('projectBId', jsonData.projectId);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Dự án Video Beta\",\n  \"description\": \"Dự án độc lập của User B\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "User B tạo Project Beta để kiểm tra bảo vệ ranh giới Tenant."
+      }
+    },
+    {
+      "name": "05. Setup - Tạo API Key cho Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"rawKey có tiền tố tvc_live_\", function () {",
+              "    pm.expect(jsonData.rawKey).to.match(/^tvc_live_[0-9a-f]{32}$/);",
+              "});",
+              "if (jsonData.rawKey) {",
+              "    pm.collectionVariables.set('apiKeyA', jsonData.rawKey);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"CI Video Key A\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "api-keys"
+          ]
+        },
+        "description": "Tạo API Key cho Project A để kiểm thử xác thực X-API-Key."
+      }
+    },
+    {
+      "name": "06. Setup - Tạo API Key cho Project B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"rawKey có tiền tố tvc_live_\", function () {",
+              "    pm.expect(jsonData.rawKey).to.match(/^tvc_live_[0-9a-f]{32}$/);",
+              "});",
+              "if (jsonData.rawKey) {",
+              "    pm.collectionVariables.set('apiKeyB', jsonData.rawKey);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"CI Video Key B\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectBId}}/api-keys",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectBId}}",
+            "api-keys"
+          ]
+        },
+        "description": "Tạo API Key cho Project B để kiểm thử gọi chéo Project qua API Key."
+      }
+    },
+    {
+      "name": "07. US1 - Khởi tạo Video qua Bearer JWT (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Video metadata đúng trạng thái UPLOADING\", function () {",
+              "    pm.expect(jsonData.video.status).to.eql('UPLOADING');",
+              "    pm.expect(jsonData.video.attemptCount).to.eql(0);",
+              "    pm.expect(jsonData.video.videoId).to.match(/^vid_[0-9a-f]{12}$/);",
+              "    pm.expect(jsonData.video.projectId).to.eql(pm.collectionVariables.get('projectAId'));",
+              "});",
+              "pm.test(\"Upload Presigned URL hợp lệ cho source.mp4 và PUT method\", function () {",
+              "    pm.expect(jsonData.upload.method).to.eql('PUT');",
+              "    pm.expect(jsonData.upload.expiresInSeconds).to.eql(900);",
+              "    pm.expect(jsonData.upload.presignedUrl).to.include('source.mp4');",
+              "    pm.expect(jsonData.upload.requiredHeaders['Content-Type']).to.eql('video/mp4');",
+              "    pm.expect(jsonData.upload.requiredHeaders['Content-Length']).to.eql('12');",
+              "});",
+              "pm.collectionVariables.set('videoId', jsonData.video.videoId);",
+              "pm.collectionVariables.set('presignedUrl', jsonData.upload.presignedUrl);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Bài giảng 1 - Khởi tạo Upload\",\n  \"filename\": \"intro.lecture.MP4\",\n  \"sizeBytes\": 12,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        },
+        "description": "US1: Khởi tạo Video qua Bearer JWT, kiểm tra videoId, trạng thái UPLOADING và nhận S3 Presigned PUT URL."
+      }
+    },
+    {
+      "name": "08. US1 - Đẩy file trực tiếp lên S3 qua Presigned PUT URL (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"S3 phản hồi 200 OK khi đẩy byte qua Presigned PUT URL hợp lệ\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "video/mp4"
+          },
+          {
+            "key": "Content-Length",
+            "value": "12"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "SAMPLE_VIDEO"
+        },
+        "url": "{{presignedUrl}}",
+        "description": "US1: Đẩy trực tiếp 12 bytes lên S3 bucket input qua Presigned PUT URL với tiêu đề Content-Type và Content-Length khớp với chữ ký."
+      }
+    },
+    {
+      "name": "09. US2 - Khởi tạo Video qua X-API-Key (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Video tạo từ Developer API Key có trạng thái UPLOADING\", function () {",
+              "    pm.expect(jsonData.video.status).to.eql('UPLOADING');",
+              "    pm.expect(jsonData.upload.presignedUrl).to.include('source.mov');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKeyA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Video tạo từ Developer API Key\",\n  \"filename\": \"camera_take.mov\",\n  \"sizeBytes\": 2097152,\n  \"contentType\": \"video/quicktime\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        },
+        "description": "US2: Developer Application khởi tạo video tự động qua header X-API-Key."
+      }
+    },
+    {
+      "name": "10. US2 - Chặn API Key Project B gọi vào Project A (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi ACCESS_DENIED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKeyB}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Tấn công chéo qua API Key\",\n  \"filename\": \"cross_key.mp4\",\n  \"sizeBytes\": 1000,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        },
+        "description": "US2-AC2: Gửi API Key của Project B vào URL của Project A bị từ chối 403 Forbidden."
+      }
+    },
+    {
+      "name": "11. US3 - Chặn file vượt quá 200MB (413 Payload Too Large)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 413 Payload Too Large\", function () {",
+              "    pm.response.to.have.status(413);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi UPLOAD_LIMIT_EXCEEDED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('UPLOAD_LIMIT_EXCEEDED');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Video Vượt Dung Lượng\",\n  \"filename\": \"heavy.mp4\",\n  \"sizeBytes\": 209715201,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        },
+        "description": "US3: Dung lượng 209715201 bytes (> 200MB) bị từ chối 413."
+      }
+    },
+    {
+      "name": "12. US4 - Chặn MIME type không hỗ trợ (422 Unprocessable Entity)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 422 Unprocessable Entity\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi UNSUPPORTED_MEDIA_TYPE\", function () {",
+              "    pm.expect(jsonData.code).to.eql('UNSUPPORTED_MEDIA_TYPE');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Video AVI Không Hỗ Trợ\",\n  \"filename\": \"clip.avi\",\n  \"sizeBytes\": 1048576,\n  \"contentType\": \"video/x-msvideo\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        },
+        "description": "US4: MIME type video/x-msvideo không nằm trong danh mục hỗ trợ bị từ chối 422."
+      }
+    },
+    {
+      "name": "13. US4 - Chặn đuôi file không hợp lệ (422 Unprocessable Entity)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 422 Unprocessable Entity\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi UNSUPPORTED_MEDIA_TYPE\", function () {",
+              "    pm.expect(jsonData.code).to.eql('UNSUPPORTED_MEDIA_TYPE');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Tệp PDF Không Phải Video\",\n  \"filename\": \"document.pdf\",\n  \"sizeBytes\": 1048576,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        },
+        "description": "US4: Đuôi tệp tin .pdf không thuộc mp4, mov, mkv, webm bị từ chối 422."
+      }
+    },
+    {
+      "name": "14. US5 - Chặn User B gọi vào Project của User A (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi ACCESS_DENIED\", function () {",
+              "    pm.expect(jsonData.code).to.eql('ACCESS_DENIED');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenB}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Tấn công chéo tenant\",\n  \"filename\": \"hack.mp4\",\n  \"sizeBytes\": 1000,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        },
+        "description": "US5: User B dùng Bearer JWT cố tình tạo video vào Project A bị từ chối 403 Forbidden."
+      }
+    },
+    {
+      "name": "15. US5 - Chặn gọi vào Project không tồn tại (404 Not Found)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi RESOURCE_NOT_FOUND\", function () {",
+              "    pm.expect(jsonData.code).to.eql('RESOURCE_NOT_FOUND');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenA}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Video trên Project Ma\",\n  \"filename\": \"ghost.mp4\",\n  \"sizeBytes\": 1000,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/prj_non_existent_999/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "prj_non_existent_999",
+            "videos"
+          ]
+        },
+        "description": "US5: Gọi vào Project không tồn tại bị từ chối 404 Not Found."
+      }
+    },
+    {
+      "name": "16. US5 - Chặn request không xác thực (401 Unauthorized)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "if (pm.response.text()) {",
+              "    var jsonData = pm.response.json();",
+              "    pm.test(\"Mã lỗi UNAUTHENTICATED\", function () {",
+              "        pm.expect(jsonData.code).to.eql('UNAUTHENTICATED');",
+              "    });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Không có token\",\n  \"filename\": \"anon.mp4\",\n  \"sizeBytes\": 1000,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{projectAId}}",
+            "videos"
+          ]
+        },
+        "description": "US5: Request không mang token hoặc key bị từ chối 401 Unauthorized."
+      }
+    }
+  ]
+}

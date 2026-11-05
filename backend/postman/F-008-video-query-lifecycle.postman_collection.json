@@ -1,0 +1,653 @@
+{
+  "info": {
+    "_postman_id": "tvc-f008-video-query-lifecycle",
+    "name": "F-008: Truy Vấn Danh Sách (Cursor Pagination), Chi Tiết, Assets & Xóa Video",
+    "description": "Bộ Postman Collection E2E cho Feature F-008: Truy vấn Danh sách Video theo Dự án kèm Phân trang Con trỏ (GSI project-index), Tra cứu Chi tiết & Assets HLS/Thumbnail, Xóa Video (Fast Delete & Conflict Guard) và Phân quyền Đa người thuê Dual Security (Bearer JWT & X-API-Key).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api",
+      "type": "string"
+    },
+    {
+      "key": "tokenA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectAId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectBId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "apiKeyA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "videoId1",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "videoId2",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "videoId3",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cursor1",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cursor2",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Setup - Đăng ký tài khoản User A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.collectionVariables.set(\"tokenA\", jsonData.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"usera_f008_{{$timestamp}}@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"fullName\": \"Người Dùng A\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "02. Setup - Đăng ký tài khoản User B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.collectionVariables.set(\"tokenB\", jsonData.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"userb_f008_{{$timestamp}}@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"fullName\": \"Người Dùng B\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "03. Setup - User A tạo Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.collectionVariables.set(\"projectAId\", jsonData.projectId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Dự án A - Khoá học Java\",\n  \"description\": \"Dự án mẫu của User A\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        }
+      }
+    },
+    {
+      "name": "04. Setup - User A tạo API Key cho Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.collectionVariables.set(\"apiKeyA\", jsonData.rawKey);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Server Key A\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/api-keys",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "api-keys"]
+        }
+      }
+    },
+    {
+      "name": "05. Setup - Tạo Video 1 trong Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.collectionVariables.set(\"videoId1\", jsonData.video.videoId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Bài giảng 1: Giới thiệu Spring Boot\",\n  \"filename\": \"intro.mp4\",\n  \"sizeBytes\": 1048576,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"]
+        }
+      }
+    },
+    {
+      "name": "06. Setup - Tạo Video 2 trong Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.collectionVariables.set(\"videoId2\", jsonData.video.videoId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Bài giảng 2: Cấu trúc DynamoDB\",\n  \"filename\": \"dynamodb.mp4\",\n  \"sizeBytes\": 2097152,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"]
+        }
+      }
+    },
+    {
+      "name": "07. Setup - Tạo Video 3 trong Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.collectionVariables.set(\"videoId3\", jsonData.video.videoId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Bài giảng 3: HLS Transcoding Pipeline\",\n  \"filename\": \"pipeline.mp4\",\n  \"sizeBytes\": 3145728,\n  \"contentType\": \"video/mp4\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"]
+        }
+      }
+    },
+    {
+      "name": "08. US1 - Danh sách Video trang 1 (limit=2, cursor=null)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trang 1 có 2 items và hasMore = true\", function () {",
+              "    pm.expect(jsonData.items.length).to.eql(2);",
+              "    pm.expect(jsonData.hasMore).to.eql(true);",
+              "    pm.expect(jsonData.nextCursor).to.be.a('string');",
+              "});",
+              "pm.collectionVariables.set(\"cursor1\", jsonData.nextCursor);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos?limit=2",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"],
+          "query": [
+            { "key": "limit", "value": "2" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "09. US1 - Danh sách Video trang 2 (limit=2, cursor=cursor1)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trang 2 có 1 item và hasMore = false\", function () {",
+              "    pm.expect(jsonData.items.length).to.eql(1);",
+              "    pm.expect(jsonData.hasMore).to.eql(false);",
+              "    pm.expect(jsonData.nextCursor == null || jsonData.nextCursor === undefined).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos?limit=2&cursor={{cursor1}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"],
+          "query": [
+            { "key": "limit", "value": "2" },
+            { "key": "cursor", "value": "{{cursor1}}" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "10. US1 - Danh sách Video qua API Key",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về đầy đủ danh sách qua API Key\", function () {",
+              "    pm.expect(jsonData.items.length).to.be.at.least(1);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-API-Key", "value": "{{apiKeyA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"]
+        }
+      }
+    },
+    {
+      "name": "11. US1/Error - Chặn 400 INVALID_CURSOR khi cursor bị lỗi/tráo đổi",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 400 Bad Request\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là INVALID_CURSOR\", function () {",
+              "    pm.expect(jsonData.code).to.eql(\"INVALID_CURSOR\");",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos?cursor=invalid_base64_tampered_cursor",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"],
+          "query": [
+            { "key": "cursor", "value": "invalid_base64_tampered_cursor" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "12. US1/Error - Chặn 400 VALIDATION_ERROR khi limit ngoài phạm vi",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 400 Bad Request\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là VALIDATION_ERROR\", function () {",
+              "    pm.expect(jsonData.code).to.eql(\"VALIDATION_ERROR\");",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos?limit=105",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"],
+          "query": [
+            { "key": "limit", "value": "105" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "13. US2 - Xem chi tiết Video 1 qua JWT",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Thông tin chi tiết video khớp videoId1\", function () {",
+              "    pm.expect(jsonData.videoId).to.eql(pm.collectionVariables.get(\"videoId1\"));",
+              "    pm.expect(jsonData.status).to.eql(\"UPLOADING\");",
+              "    pm.expect(jsonData.assets == null || jsonData.assets === undefined).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId1}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["videos", "{{videoId1}}"]
+        }
+      }
+    },
+    {
+      "name": "14. US2 - Xem chi tiết Video 1 qua API Key",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Truy vấn qua API Key thành công\", function () {",
+              "    pm.expect(jsonData.videoId).to.eql(pm.collectionVariables.get(\"videoId1\"));",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-API-Key", "value": "{{apiKeyA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId1}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["videos", "{{videoId1}}"]
+        }
+      }
+    },
+    {
+      "name": "15. US3 - Xóa Video 3 thành công (Fast Delete)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 204 No Content\", function () {",
+              "    pm.response.to.have.status(204);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId3}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["videos", "{{videoId3}}"]
+        }
+      }
+    },
+    {
+      "name": "16. US3 - Tra cứu lại Video 3 sau khi xóa trả về 404",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là RESOURCE_NOT_FOUND\", function () {",
+              "    pm.expect(jsonData.code).to.eql(\"RESOURCE_NOT_FOUND\");",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/videos/{{videoId3}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["videos", "{{videoId3}}"]
+        }
+      }
+    },
+    {
+      "name": "17. US4 - Chặn 403 Forbidden khi User B cố truy cập Project A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là ACCESS_DENIED\", function () {",
+              "    pm.expect(jsonData.code).to.eql(\"ACCESS_DENIED\");",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{tokenB}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"]
+        }
+      }
+    },
+    {
+      "name": "18. US4 - Chặn 401 Unauthorized khi không gửi Authentication",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectAId}}/videos",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectAId}}", "videos"]
+        }
+      }
+    }
+  ]
+}

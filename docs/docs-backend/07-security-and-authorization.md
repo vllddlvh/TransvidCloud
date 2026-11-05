@@ -2,9 +2,13 @@
 
 ## Authentication
 
-- SaaS: JWT theo định hướng hiện tại.
-- Developer API: API key theo project được nêu trong OpenAPI draft.
-- Security scheme, header chính xác, thời hạn JWT, refresh/logout và phạm vi endpoint phải được chốt trong OpenAPI; hiện còn **TBD**.
+- **SaaS Web (JWT)**: Sử dụng Access Token phi trạng thái (Stateless Bearer JWT) ký bằng thuật toán `HMAC-SHA256` với khóa bí mật cấu hình từ `tvc.security.jwt.secret` (tối thiểu 32 ký tự). Thời hạn mặc định là 86.400 giây (24 giờ), cấp phát qua `POST /api/auth/register` và `POST /api/auth/login`.
+- **Bảo mật mật khẩu**: Mật khẩu người dùng được băm một chiều an toàn bằng `BCryptPasswordEncoder` (độ mạnh 10 rounds) trước khi lưu vào DynamoDB; tuyệt đối không lưu hoặc để lộ mật khẩu gốc.
+- **Tính duy nhất của Email**: Áp dụng giao dịch nguyên tử DynamoDB `TransactWriteItems` ghi đồng thời User Item (`usr_...`) và Email Lock Item (`EMAIL#<normalized-email>`) với điều kiện `attribute_not_exists(userId)`, ngăn chặn triệt để race condition khi đăng ký trùng email.
+- **Developer API**: Xác thực qua tiêu đề `X-API-Key` với giá trị hash SHA-256 lưu trong bảng `apikeys` (triển khai tại Feature F-005).
+- **Phạm vi bảo vệ Endpoint**:
+  - Công khai (Public): `/api/auth/register`, `/api/auth/login`, `/api/actuator/**`, `/api/swagger-ui/**`.
+  - Bảo mật (Secured): Toàn bộ các endpoint còn lại (bao gồm `/api/auth/me`, `/api/projects/**`, `/api/videos/**`) bắt buộc phải có Bearer JWT hoặc API Key hợp lệ.
 
 ## Authorization và isolation
 

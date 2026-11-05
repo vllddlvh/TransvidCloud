@@ -1,0 +1,90 @@
+// TransVidCloud — Kiến trúc chức năng (Functional Architecture)
+// Nguồn: docs/introduction/3. SRS highlevel.md mục 9.1 (các lớp) & mục 26 (phân rã module A–H),
+//        docs/contracts/README.md, docs/docs-common/1. Overall system.md
+// Render: dot -Tpng -Gdpi=160 functional-architecture.dot -o functional-architecture.png
+digraph FunctionalArchitecture {
+  graph [rankdir=TB, dpi=160, fontname="Helvetica", compound=true,
+         labelloc="t", fontsize=14,
+         label="TransVidCloud — Kiến trúc chức năng (module A–H theo tầng)",
+         pad=0.35, nodesep=0.35, ranksep=0.55];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled",
+         color="#444444", fillcolor="#f7f7f7", margin="0.14,0.08"];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  // ===== Tầng 1: Actor =====
+  subgraph cluster_actors {
+    label="Người dùng & hệ thống tích hợp"; style="rounded,dashed"; color="#999999";
+    SaasUser [label="Người dùng SaaS\n(creator / giảng viên)", fillcolor="#e8f0fe"];
+    Dev      [label="Developer\nhệ thống ngoài (E-learning)", fillcolor="#fef7e0"];
+  }
+
+  // ===== Tầng 2: Presentation =====
+  subgraph cluster_presentation {
+    label="Tầng trình bày (Presentation) — Module Thành viên 3";
+    style="rounded"; color="#888888";
+    WebUI [label="SaaS Web (React + Vite)\nđăng nhập · project · video library\nupload · trạng thái · player HLS · embed", fillcolor="#e8f0fe"];
+    ExtUI [label="Integrate endpoint\niframe embed / HLS URL\ntrong app của khách hàng", fillcolor="#fef7e0"];
+  }
+
+  // ===== Tầng 3: Application / API functions =====
+  subgraph cluster_app {
+    label="Tầng ứng dụng / API (Spring Boot) — một backend cho SaaS + Developer API";
+    style="rounded"; color="#777777";
+
+    ModA [label="Module A — Identity & Project\nauth JWT / API key · user · project\n(quyền sở hữu theo project)", fillcolor="#fdece6"];
+    ModB [label="Module B — Video Management\nmetadata · library · chi tiết · trạng thái\n(poll GET /videos/{id})", fillcolor="#fdece6"];
+    ModC [label="Module C — Upload Service\npresigned URL · kiểm tra giới hạn\n(200MB · 5 phút · ≤1080p) · confirm", fillcolor="#fdece6"];
+    ModD [label="Module D — Job Management\ntạo job · đẩy SQS · state machine\n(retry · idempotency)", fillcolor="#fdece6"];
+    ModF [label="Module F — Asset & Integration\nassets map · HLS URL · embed\nDeveloper API + API key", fillcolor="#fdece6"];
+  }
+
+  // ===== Tầng 4: Processing =====
+  subgraph cluster_processing {
+    label="Tầng xử lý (Processing) — Module E";
+    style="rounded"; color="#777777";
+    ModE [label="Worker (Go) — SQS consumer\nclaim job → download → FFmpeg\nHLS 360p/720p + thumbnail → upload\nghi state/assets → ACK · retry · DLQ", fillcolor="#f3e8fd"];
+  }
+
+  // ===== Tầng 5: Data =====
+  subgraph cluster_data {
+    label="Tầng dữ liệu (Storage)";
+    style="rounded"; color="#777777";
+    S3In  [label="S3 input\nsource video", shape=cylinder, fillcolor="#fff3e0"];
+    S3Out [label="S3 output\nHLS + thumbnail", shape=cylinder, fillcolor="#fff3e0"];
+    DDB   [label="DynamoDB\nusers · projects\napikeys · videos", shape=cylinder, fillcolor="#fff3e0"];
+    SQS   [label="SQS + DLQ\njob message", shape=box, fillcolor="#f3e8fd"];
+  }
+
+  // ===== Ngang: Cross-cutting =====
+  subgraph cluster_platform {
+    label="Phần ngang hệ thống — Module G (Cloud/DevOps) + H (Benchmark)\nVPC · IAM · EC2/ASG (Spot) · CloudFront · CloudWatch · Terraform · k6/thực nghiệm";
+    style="rounded"; color="#888888";
+    Gov [label="Hạ tầng & vận hành nền: scale theo queue backlog,\nquan sát, bảo mật, deploy (SSM / Instance Refresh)", shape=box3d, fillcolor="#f0f0f0", width=4.2];
+  }
+
+  // ===== Luồng gọi chính =====
+  SaasUser -> WebUI [label="dùng UI"];
+  Dev      -> ExtUI [label="tích hợp"];
+
+  WebUI -> ModA [label="login / JWT"];
+  WebUI -> ModC [label="upload flow"];
+  ExtUI -> ModF [label="REST + API key"];
+
+  ModA -> ModB [label="sở hữu project"];
+  ModC -> ModD [label="confirm → job"];
+  ModB -> ModF [label="trạng thái + assets"];
+
+  ModD -> SQS  [label="publishes job"];
+  SQS  -> ModE [label="consumes"];
+
+  ModC -> S3In  [label="cấp presigned PUT"];
+  ModE -> S3In  [label="downloads input"];
+  ModE -> S3Out [label="writes output"];
+  ModB -> DDB   [label="đọc metadata"];
+  ModD -> DDB   [label="ghi state"];
+  ModE -> DDB   [label="ghi state + assets"];
+
+  // cross-cutting (nét đứt)
+  Gov -> ModE [style=dashed, label="deploy + scale", lhead=cluster_processing];
+  Gov -> SQS  [style=dashed, label="backlog metric"];
+}

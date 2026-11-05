@@ -1,0 +1,68 @@
+# UI-to-Backend API Contract Mapping: F-011
+# Nguồn sự thật duy nhất (SSOT): /contracts/openapi.yaml
+
+openapi: 3.0.3
+info:
+  title: TransVidCloud Frontend Parity Contract (F-003 -> F-008)
+  version: 1.0.0
+  description: |
+    Ánh xạ đầy đủ các endpoints từ /contracts/openapi.yaml được tích hợp
+    trên Frontend trong Feature F-011.
+
+paths:
+  /api/auth/me:
+    get:
+      summary: Lấy thông tin người dùng hiện tại (F-003)
+      responses:
+        '200':
+          description: UserSummary
+  /api/projects/{projectId}:
+    get:
+      summary: Xem chi tiết Project (F-004)
+      responses:
+        '200':
+          description: ProjectResponse
+    patch:
+      summary: Cập nhật tên, mô tả, webhookUrl của Project (F-004)
+      responses:
+        '200':
+          description: ProjectResponse
+    delete:
+      summary: Xóa mềm Project khi không có video đang xử lý (F-004)
+      responses:
+        '204':
+          description: Xóa mềm thành công
+        '409':
+          description: RESOURCE_IN_USE (Còn video đang UPLOADING/PENDING/PROCESSING)
+  /api/projects/{projectId}/api-keys:
+    get:
+      summary: Liệt kê danh sách API Key của Project (F-005)
+      responses:
+        '200':
+          description: ApiKeyListResponse
+    post:
+      summary: Tạo API Key mới, trả về rawKey duy nhất 1 lần (F-005)
+      responses:
+        '201':
+          description: CreatedApiKeyResponse
+        '400':
+          description: Vượt quá tối đa 5 API Keys mỗi Project
+  /api/projects/{projectId}/api-keys/{keyHash}:
+    delete:
+      summary: Thu hồi (Revoke) API Key tức thì (F-005)
+      responses:
+        '204':
+          description: Thu hồi thành công
+  /api/videos/{videoId}:
+    get:
+      summary: Xem chi tiết Video kèm bộ 4 đường dẫn VideoAssets (F-008)
+      responses:
+        '200':
+          description: VideoResponse (masterPlaylistUrl, hls360Url, hls720Url, thumbnailUrl)
+    delete:
+      summary: Xóa Video (Fast Delete), chặn 409 nếu đang PROCESSING (F-008)
+      responses:
+        '204':
+          description: Xóa thành công
+        '409':
+          description: INVALID_STATE_TRANSITION / RESOURCE_IN_USE (Video đang PROCESSING)

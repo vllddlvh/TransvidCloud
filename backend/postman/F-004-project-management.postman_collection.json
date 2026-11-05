@@ -1,0 +1,868 @@
+{
+  "info": {
+    "_postman_id": "tvc-f004-project-management",
+    "name": "F-004: Quản lý Project & Phân quyền sở hữu tài nguyên",
+    "description": "Bộ Postman Collection chuyên biệt cho Feature F-004: Quản lý Project & Phân quyền sở hữu tài nguyên (Epic A2). Kiểm thử độc lập toàn bộ vòng đời CRUD, GSI owner-index (sắp xếp mới nhất lên đầu), Soft Delete, kiểm tra an toàn và cô lập quyền sở hữu tài nguyên đa người thuê (Multi-tenant Isolation).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api",
+      "type": "string"
+    },
+    {
+      "key": "tokenA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectMinimalId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Chuẩn bị - Đăng ký tài khoản Người dùng A",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về accessToken hợp lệ cho User A\", function () {",
+              "    pm.expect(jsonData.accessToken).to.be.a('string');",
+              "    pm.expect(jsonData.tokenType).to.eql('Bearer');",
+              "});",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('tokenA', jsonData.accessToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user.alpha.{{$timestamp}}@transvidcloud.io\",\n  \"password\": \"Password123@\",\n  \"fullName\": \"Người Dùng Alpha\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        },
+        "description": "Đăng ký Người dùng A để tạo phiên làm việc JWT Bearer token."
+      }
+    },
+    {
+      "name": "02. US1 - Tạo Project mới đầy đủ thông tin (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"ProjectId có tiền tố prj_\", function () {",
+              "    pm.expect(jsonData.projectId).to.match(/^prj_/);",
+              "    pm.expect(jsonData.name).to.eql('Khóa học Spring Boot Cloud Native');",
+              "    pm.expect(jsonData.description).to.eql('Kho video bài giảng lập trình Spring Boot');",
+              "    pm.expect(jsonData.webhookUrl).to.eql('https://elearning.example.com/api/webhooks');",
+              "    pm.expect(jsonData.createdAt).to.be.a('string');",
+              "    pm.expect(jsonData.updatedAt).to.be.a('string');",
+              "});",
+              "if (jsonData.projectId) {",
+              "    pm.collectionVariables.set('projectId', jsonData.projectId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Khóa học Spring Boot Cloud Native\",\n  \"description\": \"Kho video bài giảng lập trình Spring Boot\",\n  \"webhookUrl\": \"https://elearning.example.com/api/webhooks\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "US1-AC1: Tạo Project mới với đầy đủ tên, mô tả và webhookUrl hợp lệ."
+      }
+    },
+    {
+      "name": "03. US1 - Tạo Project chỉ có tên bắt buộc (201 Created)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Khởi tạo thành công với mô tả và webhookUrl là null\", function () {",
+              "    pm.expect(jsonData.projectId).to.match(/^prj_/);",
+              "    pm.expect(jsonData.name).to.eql('Dự án Phụ Không Mô Tả');",
+              "    pm.expect(jsonData.description).to.be.null;",
+              "    pm.expect(jsonData.webhookUrl).to.be.null;",
+              "});",
+              "if (jsonData.projectId) {",
+              "    pm.collectionVariables.set('projectMinimalId', jsonData.projectId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Dự án Phụ Không Mô Tả\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "US1-AC2: Tạo Project chỉ có tên bắt buộc, không truyền mô tả và webhookUrl."
+      }
+    },
+    {
+      "name": "04. US1 - Tạo Project lỗi dữ liệu - Tên rỗng (400 Bad Request)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 400 Bad Request\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi validation chuẩn (code 1001)\", function () {",
+              "    pm.expect(jsonData.code).to.eql(1001);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"   \",\n  \"description\": \"Tên không hợp lệ\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "US1-AC3: Tên rỗng trả về HTTP 400 Bad Request (VALIDATION_ERROR)."
+      }
+    },
+    {
+      "name": "05. US2 - Liệt kê danh sách Project của User A (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Trả về danh sách mảng items có ít nhất 2 project\", function () {",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "    pm.expect(jsonData.items.length).to.be.at.least(2);",
+              "});",
+              "pm.test(\"Sắp xếp mới nhất lên đầu (createdAt giảm dần)\", function () {",
+              "    var minimalId = pm.collectionVariables.get('projectMinimalId');",
+              "    pm.expect(jsonData.items[0].projectId).to.eql(minimalId);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "US2-AC1: Liệt kê danh sách Project qua GSI owner-index, sắp xếp mới nhất lên đầu (ScanIndexForward = false)."
+      }
+    },
+    {
+      "name": "06. US2 - Xem chi tiết Project của User A (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Thông tin Project chính xác\", function () {",
+              "    pm.expect(jsonData.projectId).to.eql(pm.collectionVariables.get('projectId'));",
+              "    pm.expect(jsonData.name).to.eql('Khóa học Spring Boot Cloud Native');",
+              "    pm.expect(jsonData.createdAt).to.be.a('string');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US2-AC3: Xem chi tiết một project đang hoạt động bằng mã projectId."
+      }
+    },
+    {
+      "name": "07. US2 - Xem chi tiết Project không tồn tại (404 Not Found)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi RESOURCE_NOT_FOUND (code 1005)\", function () {",
+              "    pm.expect(jsonData.code).to.eql(1005);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/prj_nonexistent_999",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "prj_nonexistent_999"]
+        },
+        "description": "US2-AC4: Xem chi tiết project không tồn tại trả về 404 Not Found."
+      }
+    },
+    {
+      "name": "08. US3 - Cập nhật thông tin Project (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Tên và mô tả đã được cập nhật thành công\", function () {",
+              "    pm.expect(jsonData.name).to.eql('Khóa học Spring Boot Cloud Native (Updated)');",
+              "    pm.expect(jsonData.description).to.eql('Mô tả cập nhật mới');",
+              "    pm.expect(jsonData.webhookUrl).to.eql('https://elearning.example.com/api/webhooks/v2');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Khóa học Spring Boot Cloud Native (Updated)\",\n  \"description\": \"Mô tả cập nhật mới\",\n  \"webhookUrl\": \"https://elearning.example.com/api/webhooks/v2\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US3-AC1: Cập nhật tên, mô tả và URL webhook của project, làm mới updatedAt."
+      }
+    },
+    {
+      "name": "09. US3 - Gỡ bỏ Webhook của Project (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"WebhookUrl đã được gỡ bỏ (chuyển thành null)\", function () {",
+              "    pm.expect(jsonData.webhookUrl).to.be.null;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"webhookUrl\": null\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US3-AC2: Gỡ bỏ Webhook đã cấu hình bằng cách truyền webhookUrl là null."
+      }
+    },
+    {
+      "name": "10. US5 - Chuẩn bị - Đăng ký tài khoản Người dùng B",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "if (jsonData.accessToken) {",
+              "    pm.collectionVariables.set('tokenB', jsonData.accessToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user.beta.{{$timestamp}}@transvidcloud.io\",\n  \"password\": \"Password123@\",\n  \"fullName\": \"Người Dùng Beta\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        },
+        "description": "Đăng ký Người dùng B để kiểm tra tính năng cô lập quyền sở hữu tài nguyên (Multi-tenant Isolation)."
+      }
+    },
+    {
+      "name": "11. US5 - Người dùng B cố xem Project của A (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là ACCESS_DENIED (code 1007)\", function () {",
+              "    pm.expect(jsonData.code).to.eql(1007);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenB}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US5-AC1: Người dùng B truy cập trái phép Project của Người dùng A bị từ chối 403 Forbidden (ACCESS_DENIED)."
+      }
+    },
+    {
+      "name": "12. US5 - Người dùng B cố ý sửa Project của A (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là ACCESS_DENIED (code 1007)\", function () {",
+              "    pm.expect(jsonData.code).to.eql(1007);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenB}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Tấn Công Thay Đổi Tên Project A\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US5-AC2: Người dùng B cố ý cập nhật Project của Người dùng A bị từ chối 403 Forbidden (ACCESS_DENIED)."
+      }
+    },
+    {
+      "name": "13. US5 - Người dùng B cố ý xóa Project của A (403 Forbidden)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 403 Forbidden\", function () {",
+              "    pm.response.to.have.status(403);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi là ACCESS_DENIED (code 1007)\", function () {",
+              "    pm.expect(jsonData.code).to.eql(1007);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenB}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US5-AC2: Người dùng B cố ý xóa Project của Người dùng A bị từ chối 403 Forbidden (ACCESS_DENIED)."
+      }
+    },
+    {
+      "name": "14. US5 - Danh sách Project của B không thấy Project của A (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Danh sách rỗng hoặc tuyệt đối không chứa project của A\", function () {",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "    var targetId = pm.collectionVariables.get('projectId');",
+              "    var found = jsonData.items.some(function(item) { return item.projectId === targetId; });",
+              "    pm.expect(found).to.be.false;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenB}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "US5-AC3: Người dùng B liệt kê danh sách dự án không nhìn thấy dự án của Người dùng A."
+      }
+    },
+    {
+      "name": "15. US4 - Người dùng A xóa an toàn Project - Soft Delete (204 No Content)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 204 No Content\", function () {",
+              "    pm.response.to.have.status(204);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US4-AC1: Khi không còn video in-flight, thực hiện Soft Delete thành công (204 No Content, status = DELETED, ghi nhận deletedAt)."
+      }
+    },
+    {
+      "name": "16. US4 - Xem chi tiết Project đã bị Xóa Mềm (404 Not Found)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi RESOURCE_NOT_FOUND (code 1005)\", function () {",
+              "    pm.expect(jsonData.code).to.eql(1005);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US4-AC3 & US2-AC4: Sau khi xóa mềm, truy vấn chi tiết trả về 404 Not Found (RESOURCE_NOT_FOUND)."
+      }
+    },
+    {
+      "name": "17. US4 - Cố cập nhật Project đã bị Xóa Mềm (404 Not Found)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi RESOURCE_NOT_FOUND (code 1005)\", function () {",
+              "    pm.expect(jsonData.code).to.eql(1005);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Cập nhật sau xóa mềm\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{projectId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects", "{{projectId}}"]
+        },
+        "description": "US3-AC4: Cố cập nhật một project đã bị xóa mềm trả về 404 Not Found (RESOURCE_NOT_FOUND)."
+      }
+    },
+    {
+      "name": "18. US4 - Danh sách Project của User A đã ẩn Project đã Xóa Mềm (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Danh sách loại trừ project đã bị xóa mềm\", function () {",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "    var targetId = pm.collectionVariables.get('projectId');",
+              "    var found = jsonData.items.some(function(item) { return item.projectId === targetId; });",
+              "    pm.expect(found).to.be.false;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenA}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "US2-AC1 & US4-AC1: Project đã bị xóa mềm tự động bị ẩn khỏi danh sách GET /api/projects."
+      }
+    },
+    {
+      "name": "19. Edge Case - Truy cập khi thiếu Bearer Token (401 Unauthorized)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code là 401 Unauthorized\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Mã lỗi UNAUTHENTICATED (code 1000)\", function () {",
+              "    pm.expect(jsonData.code).to.eql(1000);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["projects"]
+        },
+        "description": "FR-012: Truy cập endpoint Project mà không có Authorization Header trả về 401 Unauthorized."
+      }
+    }
+  ]
+}

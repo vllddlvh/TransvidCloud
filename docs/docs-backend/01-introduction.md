@@ -27,7 +27,7 @@ Hai nhóm dùng chung nghiệp vụ và processing pipeline.
 
 ## Công nghệ
 
-Thiết kế nền tảng dùng JDK 21, Spring Boot 3.x, REST API, AWS SDK for Java và DynamoDB. Cấu trúc build/package cụ thể phải khớp với code trong `backend/`.
+Thiết kế nền tảng dùng Java 21 LTS, Spring Boot 3.4.x, REST API, AWS SDK for Java v2 và DynamoDB. Cấu trúc build/package cụ thể phải khớp với code trong `backend/`.
 
 ## Sơ đồ rút gọn
 

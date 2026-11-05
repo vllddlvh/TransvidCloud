@@ -1,0 +1,88 @@
+Hãy thiết lập Project Constitution với các nguyên tắc phát triển phần mềm cốt lõi sau đây.
+
+Mục tiêu là xây dựng một hệ thống có chất lượng code cao, kiến trúc rõ ràng, dễ bảo trì, an toàn, có khả năng kiểm chứng và phát triển lâu dài.
+
+### I. Code Quality & Maintainability
+
+- Code MUST rõ ràng, dễ đọc, dễ hiểu và dễ bảo trì.
+- Ưu tiên giải pháp đơn giản, tránh over-engineering và abstraction không cần thiết.
+- MUST tuân thủ coding conventions và engineering standards của project.
+- MUST hạn chế code duplication, tight coupling và unnecessary complexity.
+- Refactoring MUST giữ nguyên behavior hiện tại trừ khi có yêu cầu thay đổi rõ ràng.
+
+### II. Architecture & Modularity
+
+- MUST tôn trọng kiến trúc, module boundaries và trách nhiệm của từng thành phần.
+- MUST duy trì separation of concerns và dependency direction hợp lý.
+- Không tạo circular dependencies hoặc coupling không cần thiết giữa các module.
+- MUST ưu tiên tái sử dụng các abstraction và infrastructure hiện có trước khi tạo mới.
+- Mọi thay đổi kiến trúc quan trọng MUST có lý do và được review phù hợp.
+
+### III. Security & Privacy
+
+- Security MUST được xem xét xuyên suốt vòng đời phát triển.
+- MUST áp dụng least privilege và defense in depth khi phù hợp.
+- MUST xác thực và phân quyền đối với các thao tác cần bảo vệ.
+- MUST bảo vệ credentials, secrets, sensitive data và thông tin cá nhân.
+- MUST validate dữ liệu đầu vào và xử lý các rủi ro bảo mật phù hợp với loại hệ thống.
+- MUST NOT vô hiệu hóa cơ chế bảo mật để làm cho kiểm thử hoặc triển khai dễ dàng hơn.
+
+### IV. Correctness & Data Integrity
+
+- MUST bảo đảm tính chính xác và nhất quán của dữ liệu.
+- MUST xử lý transaction, concurrency và failure scenarios khi nghiệp vụ yêu cầu.
+- API contracts và data contracts MUST được quản lý rõ ràng.
+- Thay đổi public API hoặc database schema MUST xem xét backward compatibility và migration impact.
+- MUST NOT tự ý thay đổi business behavior ngoài phạm vi được phê duyệt.
+
+### V. Testing & Verification
+
+- Mọi thay đổi có logic hoặc ảnh hưởng đến behavior MUST có verification phù hợp.
+- Testing strategy MUST dựa trên mức độ rủi ro và phạm vi ảnh hưởng của thay đổi.
+- Sử dụng Unit Test, Integration Test, Contract Test và End-to-End Test khi phù hợp.
+- Các thành phần tích hợp như database, message broker và external services MUST được kiểm chứng tại integration boundaries khi có ảnh hưởng.
+- MUST chạy các verification commands phù hợp và sử dụng kết quả thực tế làm bằng chứng.
+- MUST NOT tuyên bố hoàn thành hoặc verification PASS khi chưa có bằng chứng.
+- Test coverage là một chỉ số hỗ trợ đánh giá, không phải bằng chứng duy nhất về chất lượng.
+
+### VI. Error Handling & Observability
+
+- MUST xử lý lỗi một cách nhất quán và có thể dự đoán.
+- MUST tránh nuốt lỗi hoặc che giấu nguyên nhân thất bại.
+- Logging và monitoring SHOULD cung cấp đủ thông tin để chẩn đoán sự cố.
+- MUST NOT ghi secrets hoặc sensitive data vào logs.
+- Các luồng nghiệp vụ quan trọng SHOULD có khả năng quan sát và truy vết phù hợp.
+
+### VII. Documentation & Technical Decisions
+
+- Tài liệu MUST phản ánh đúng implementation và các quyết định đã được xác nhận.
+- Thay đổi kiến trúc, API, data model hoặc business behavior quan trọng MUST được cập nhật tài liệu liên quan.
+- Các quyết định kỹ thuật quan trọng SHOULD được ghi nhận dưới dạng Architecture Decision Records khi phù hợp.
+- Documentation MUST tránh trùng lặp và có nguồn thông tin chính thức rõ ràng.
+
+### VIII. Dependency & Engineering Discipline
+
+- MUST ưu tiên sử dụng dependency và infrastructure hiện có nếu đáp ứng yêu cầu.
+- Dependency mới MUST có lý do kỹ thuật và được đánh giá về compatibility, security và maintenance cost.
+- MUST tránh các thay đổi không liên quan đến task hiện tại.
+- MUST giữ phạm vi thay đổi nhỏ và có thể review.
+- Technical debt quan trọng SHOULD được ghi nhận thay vì âm thầm tích lũy.
+
+### IX. Human Oversight & Governance
+
+- Con người giữ quyền quyết định đối với các thay đổi quan trọng về nghiệp vụ, kiến trúc, bảo mật, dữ liệu và public contracts.
+- AI Agent MUST phân biệt sự thật đã xác minh, giả định và đề xuất.
+- MUST yêu cầu human clarification khi thiếu thông tin có ảnh hưởng đáng kể đến thiết kế hoặc behavior.
+- Constitution chỉ được thay đổi thông qua quy trình review và approval phù hợp.
+- Khi có mâu thuẫn giữa yêu cầu mới và nguyên tắc hiện hành, phải chỉ rõ mâu thuẫn và xin quyết định thay vì tự ý bỏ qua nguyên tắc.
+
+### Yêu cầu khi tạo Constitution
+
+1. Giữ nguyên ý nghĩa các nguyên tắc trên nhưng điều chỉnh cách diễn đạt phù hợp với project thực tế.
+2. Sử dụng MUST, MUST NOT, SHOULD nhất quán.
+3. Không tự đặt các con số như coverage threshold, performance SLA hoặc availability target khi chưa có quyết định.
+4. Không đưa chi tiết implementation, API cụ thể hoặc danh sách feature vào Constitution.
+5. Sử dụng tiếng Việt cho nội dung diễn giải, giữ nguyên technical terminology cần thiết.
+6. Tuân thủ cấu trúc và template Constitution của Spec Kit phiên bản hiện tại.
+7. Đề xuất version ban đầu phù hợp và giải thích các quyết định quan trọng.
+8. Báo cáo những nguyên tắc cần con người xác nhận trước khi xem là chính sách chính thức.

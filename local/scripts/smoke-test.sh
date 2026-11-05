@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # Kiểm tra LocalStack đã khởi tạo đúng tài nguyên.
 set -euo pipefail
-aws_() { docker compose exec -T localstack awslocal "$@"; }
+CONTAINER="${TVC_LOCALSTACK_CONTAINER:-tvc-localstack}"
+aws_() {
+  if docker inspect "$CONTAINER" >/dev/null 2>&1; then
+    docker exec -i "$CONTAINER" awslocal "$@"
+  else
+    (cd "$(dirname "$0")/../.." && docker compose exec -T localstack awslocal "$@")
+  fi
+}
 fail=0
 check() { # check <mô tả> <chuỗi cần có> <lệnh...>
   local desc="$1" want="$2"; shift 2

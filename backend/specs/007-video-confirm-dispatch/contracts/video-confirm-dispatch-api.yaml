@@ -1,0 +1,181 @@
+openapi: 3.1.0
+info:
+  title: TransVidCloud Video Confirm & SQS Dispatch API Contract (F-007)
+  version: 0.1.0
+  description: |
+    Hợp đồng giao tiếp trích xuất từ `contracts/openapi.yaml` và `contracts/sqs-job-message.schema.json`
+    cho tính năng Xác nhận Upload, Chuyển trạng thái & Điều phối SQS Job qua Transactional Outbox (F-007).
+
+paths:
+  /videos/{videoId}/confirm:
+    parameters:
+      - name: videoId
+        in: path
+        required: true
+        description: Định danh của Video (ví dụ `vid_4a77e1c8d102`)
+        schema:
+          type: string
+    post:
+      tags: [Videos]
+      operationId: confirmVideoUpload
+      summary: Xác nhận đã tải video lên S3 (UPLOADING -> PENDING)
+      description: |
+        Gọi S3 `HeadObject` để xác minh object tồn tại và dung lượng hợp lệ (`0 < contentLength <= 200MB`),
+        sau đó thực hiện giao dịch nguyên tử `TransactWriteItems` chuyển trạng thái `UPLOADING -> PENDING` kèm lưu `OutboxItem`,
+        và phát hành job message (`schemaVersion: 1`) vào hàng đợi SQS `tvc-{env}-jobs`.
+        Thao tác này là **idempotent**: nếu video đã ở `PENDING`, `PROCESSING` hoặc `COMPLETED`, trả về `200 OK`
+        với thông tin hiện tại mà không gửi trùng message SQS.
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "202":
+          description: Xác nhận thành công lần đầu, đã chuyển sang `PENDING` và đưa job vào hàng đợi SQS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "200":
+          description: Video đã được xác nhận trước đó (idempotent response)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoResponse"
+        "401":
+          description: Thiếu hoặc sai thông tin xác thực (`UNAUTHENTICATED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Không có quyền truy cập tài nguyên thuộc người dùng hoặc Project khác (`ACCESS_DENIED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Không tìm thấy Video hoặc Project yêu cầu (`RESOURCE_NOT_FOUND`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Trạng thái video hiện tại không cho phép xác nhận (`INVALID_STATE_TRANSITION`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Dung lượng tệp trên S3 vượt quá giới hạn tối đa 200 MB (`UPLOAD_LIMIT_EXCEEDED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Tệp chưa tồn tại trên S3 hoặc tệp rỗng 0 byte (`S3_OBJECT_NOT_FOUND`, `UPLOAD_SIZE_MISMATCH`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    VideoResponse:
+      type: object
+      required: [videoId, projectId, title, status, sizeBytes, contentType, attemptCount, createdAt, updatedAt]
+      properties:
+        videoId:
+          type: string
+          example: vid_4a77e1c8d102
+        projectId:
+          type: string
+          example: prj_1c05d9e2a3f4
+        title:
+          type: string
+          example: Bài giảng Chương 1 - Điện toán đám mây
+        status:
+          type: string
+          enum: [UPLOADING, PENDING, PROCESSING, COMPLETED, FAILED_VALIDATION, FAILED_TRANSCODE, FAILED_STORAGE]
+        sizeBytes:
+          type: integer
+          format: int64
+          example: 52428800
+        contentType:
+          type: string
+          example: video/mp4
+        attemptCount:
+          type: integer
+          example: 0
+        errorCode:
+          type: string
+          nullable: true
+        assets:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SqsJobMessage:
+      type: object
+      required: [schemaVersion, jobId, videoId, projectId, inputKey]
+      additionalProperties: false
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+        jobId:
+          type: string
+          example: job_9f8e7d6c5b4a
+        videoId:
+          type: string
+          example: vid_4a77e1c8d102
+        projectId:
+          type: string
+          example: prj_1c05d9e2a3f4
+        inputKey:
+          type: string
+          example: prj_1c05d9e2a3f4/vid_4a77e1c8d102/source.mp4
+        requestedAt:
+          type: string
+          format: date-time
+          example: "2026-11-01T09:00:00Z"
+
+    ErrorResponse:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: object
+          additionalProperties:
+            type: string
