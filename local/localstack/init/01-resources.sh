@@ -10,6 +10,8 @@ for b in frontend input output; do
 done
 awslocal s3api put-bucket-cors --bucket "${P}-input" \
   --cors-configuration file:///etc/localstack/init/ready.d/cors.json
+awslocal s3api put-bucket-lifecycle-configuration --bucket "${P}-input" \
+  --lifecycle-configuration file:///etc/localstack/init/ready.d/input-lifecycle.json
 
 echo "[init] SQS + DLQ"
 awslocal sqs create-queue --queue-name "${P}-jobs-dlq" >/dev/null

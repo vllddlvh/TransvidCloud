@@ -1,0 +1,6 @@
+bucket              = "tvc-tfstate-975473296238-ap-southeast-2"
+key                 = "dev/terraform.tfstate"
+region              = "ap-southeast-2"
+encrypt             = true
+use_lockfile        = true
+allowed_account_ids = ["975473296238"]

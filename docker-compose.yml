@@ -15,7 +15,7 @@ services:
       # Script chạy tự động mỗi khi LocalStack "ready" (tạo bucket/queue/bảng)
       - ./local/localstack/init:/etc/localstack/init/ready.d
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/_localstack/health', timeout=3).read()"]
       interval: 5s
       timeout: 5s
       retries: 20

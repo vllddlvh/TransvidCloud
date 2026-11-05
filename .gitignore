@@ -27,6 +27,8 @@ frontend/dist/
 *.tfvars
 !*.tfvars.example
 crash.log
+*.tfplan
+backend.hcl
 
 # Video: bỏ qua mọi video, trừ video mẫu nhỏ cho test
 *.mp4
