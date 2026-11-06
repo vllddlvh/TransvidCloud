@@ -42,11 +42,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Kiểm tra script deploy không tự bật compute khi hạ tải
+      - name: Kiểm tra script deploy và worker drain
         run: |
           bash -n scripts/deploy-api.sh
           bash -n scripts/bump-worker-tag.sh
           bash tests/deploy/dormant.sh
+          bash tests/deploy/worker-refresh.sh
       - if: ${{ hashFiles('infra/terraform/envs/dev/*.tf') != '' }}
         uses: hashicorp/setup-terraform@v3
       - if: ${{ hashFiles('infra/terraform/envs/dev/*.tf') != '' }}

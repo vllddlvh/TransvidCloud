@@ -14,6 +14,31 @@ if [ "$INSTANCE_COUNT" = 0 ]; then
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then printf '%s\n' "$MESSAGE" >> "$GITHUB_STEP_SUMMARY"; fi
   exit 0
 fi
+INSTANCES=$(aws autoscaling describe-auto-scaling-groups --region "$REGION" \
+  --auto-scaling-group-names "$ASG" --query 'AutoScalingGroups[0].Instances[].InstanceId' --output text)
+for INSTANCE in $INSTANCES; do
+  COMMAND=$(aws ssm send-command --region "$REGION" --document-name AWS-RunShellScript \
+    --instance-ids "$INSTANCE" \
+    --parameters '{"commands":["if docker inspect tvc-worker >/dev/null 2>&1; then docker stop -t 120 tvc-worker; fi"],"executionTimeout":["180"]}' \
+    --query Command.CommandId --output text)
+  DRAINED=false
+  for attempt in $(seq 1 60); do
+    DRAIN_STATUS=$(aws ssm get-command-invocation --region "$REGION" --command-id "$COMMAND" \
+      --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || true)
+    case "$DRAIN_STATUS" in
+      Success) DRAINED=true; break ;;
+      Failed|Cancelled|TimedOut|Cancelling) echo "Worker drain thất bại: $INSTANCE ($DRAIN_STATUS)" >&2; exit 1 ;;
+    esac
+    sleep 5
+  done
+  if [ "$DRAINED" != true ]; then
+    echo "Chưa drain xong worker $INSTANCE; giữ nguyên protection." >&2
+    exit 1
+  fi
+  # Worker đã dừng poll và trả message chưa ACK; lúc này mới cho phép thay instance.
+  aws autoscaling set-instance-protection --region "$REGION" --auto-scaling-group-name "$ASG" \
+    --instance-ids "$INSTANCE" --no-protected-from-scale-in
+done
 REFRESH=$(aws autoscaling start-instance-refresh --region "$REGION" \
   --auto-scaling-group-name "$ASG" \
   --preferences '{"MinHealthyPercentage":50,"ScaleInProtectedInstances":"Wait","InstanceWarmup":60}' \

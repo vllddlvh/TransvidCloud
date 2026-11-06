@@ -16,7 +16,7 @@ PowerShell: `./scripts/cloud-dev.ps1 -Action status` (hoặc `start`, `stop`). C
 
 `deploy-api.sh` cập nhật image tag trong SSM, gọi `systemctl restart tvc.service` trên API và đợi health check từ bootstrap; khôi phục tag trước nếu deploy lỗi. Bootstrap đọc JWT/tunnel token trực tiếp từ SSM.
 
-Khi API đang dừng, script chỉ lưu tag cho lần bật máy sau. `bump-worker-tag.sh` cũng chỉ lưu tag nếu ASG không có instance; khi có instance, script theo dõi refresh và báo lỗi nếu hết thời gian chờ protection. Pipeline không tự bật compute đang hạ tải.
+Khi API đang dừng, script chỉ lưu tag cho lần bật máy sau. `bump-worker-tag.sh` cũng chỉ lưu tag nếu ASG không có instance. Khi có worker đang chạy, script dừng container graceful qua SSM, đợi xác nhận thành công rồi mới gỡ protection và theo dõi Instance Refresh; drain lỗi thì giữ protection và báo thất bại. Pipeline không tự bật compute đang hạ tải.
 
 CI tự gọi Deploy khi push `nguyen-1` và tất cả kiểm tra PASS; OIDC AWS chỉ cho phép đúng nhánh này. Không deploy từ pull request hoặc `main`. Các biến Actions dùng giá trị trong tài liệu tiến độ; không lưu AWS key tĩnh lên GitHub.
 
