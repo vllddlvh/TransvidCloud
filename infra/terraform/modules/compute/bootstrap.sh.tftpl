@@ -1,0 +1,72 @@
+#!/bin/bash
+set -euo pipefail
+dnf install -y docker
+systemctl enable --now docker amazon-ssm-agent
+install -d -m 700 /opt/tvc
+cat >/opt/tvc/start.sh <<'START'
+#!/bin/bash
+set -euo pipefail
+export AWS_DEFAULT_REGION='${region}'
+REGISTRY='${registry}'
+COMPONENT='${component}'
+PARAMETER_PREFIX='/tvc/${environment}'
+aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+if [ "$COMPONENT" = api ]; then
+  TAG=$(aws ssm get-parameter --name "$PARAMETER_PREFIX/api/image-tag" --query Parameter.Value --output text)
+  JWT=$(aws ssm get-parameter --name "$PARAMETER_PREFIX/api/jwt-secret" --with-decryption --query Parameter.Value --output text)
+  TOKEN=$(aws ssm get-parameter --name "$PARAMETER_PREFIX/cloudflared/token" --with-decryption --query Parameter.Value --output text)
+  umask 077
+  printf 'JWT_SECRET=%s\n' "$JWT" >/opt/tvc/api.env
+  printf '%s' "$TOKEN" >/opt/tvc/tunnel-token
+  chmod 444 /opt/tvc/tunnel-token
+  docker pull "$REGISTRY/tvc-backend:$TAG"
+  docker pull cloudflare/cloudflared:latest
+  docker rm -f tvc-api tvc-cloudflared 2>/dev/null || true
+  docker run -d --name tvc-api --restart unless-stopped --network host \
+    --log-driver awslogs --log-opt awslogs-region='${region}' --log-opt awslogs-group='/tvc/${environment}/api' --log-opt awslogs-stream=backend \
+    --env-file /opt/tvc/api.env -e SERVER_ADDRESS=127.0.0.1 \
+    -e AWS_REGION='${region}' -e AWS_ACCESS_KEY_ID= -e AWS_SECRET_ACCESS_KEY= \
+    -e TVC_AWS_ENDPOINT= -e S3_PRESIGN_ENDPOINT= -e S3_PATH_STYLE_ENABLED=false \
+    -e S3_BUCKET_INPUT='${input_bucket}' -e S3_BUCKET_OUTPUT='${output_bucket}' \
+    -e SQS_QUEUE_NAME='tvc-${environment}-jobs' -e DDB_TABLE_PREFIX='tvc-${environment}-' \
+    -e CORS_ALLOWED_ORIGINS='${cors_allowed_origins}' -e TVC_MEDIA_BASE_URL=/media \
+    "$REGISTRY/tvc-backend:$TAG"
+  for attempt in $(seq 1 60); do
+    if curl -fsS http://127.0.0.1:8080/api/actuator/health; then break; fi
+    if [ "$attempt" = 60 ]; then exit 1; fi
+    sleep 5
+  done
+  docker run -d --name tvc-cloudflared --restart unless-stopped --network host \
+    --log-driver awslogs --log-opt awslogs-region='${region}' --log-opt awslogs-group='/tvc/${environment}/api' --log-opt awslogs-stream=tunnel \
+    --mount type=bind,src=/opt/tvc/tunnel-token,dst=/run/token,readonly \
+    cloudflare/cloudflared:latest tunnel --no-autoupdate run --token-file /run/token
+else
+  TAG=$(aws ssm get-parameter --name "$PARAMETER_PREFIX/worker/image-tag" --query Parameter.Value --output text)
+  docker pull "$REGISTRY/tvc-worker:$TAG"
+  docker rm -f tvc-worker 2>/dev/null || true
+  docker run -d --name tvc-worker --restart unless-stopped --network host \
+    --log-driver awslogs --log-opt awslogs-region='${region}' --log-opt awslogs-group='/tvc/${environment}/worker' --log-opt awslogs-stream="$(hostname)" \
+    -e AWS_REGION='${region}' -e TVC_INPUT_BUCKET='${input_bucket}' \
+    -e TVC_OUTPUT_BUCKET='${output_bucket}' -e TVC_JOBS_QUEUE_URL='${queue_url}' \
+    -e TVC_DDB_VIDEOS='tvc-${environment}-videos' "$REGISTRY/tvc-worker:$TAG"
+fi
+START
+chmod 700 /opt/tvc/start.sh
+cat >/etc/systemd/system/tvc.service <<'UNIT'
+[Unit]
+Description=TransVidCloud containers
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/tvc/start.sh
+RemainAfterExit=yes
+TimeoutStartSec=900
+Restart=on-failure
+RestartSec=30
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now tvc.service

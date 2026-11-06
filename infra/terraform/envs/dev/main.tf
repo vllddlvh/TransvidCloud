@@ -4,9 +4,10 @@ module "network" {
 }
 
 module "storage" {
-  source      = "../../modules/storage"
-  environment = var.environment
-  account_id  = var.account_id
+  source          = "../../modules/storage"
+  environment     = var.environment
+  account_id      = var.account_id
+  allowed_origins = ["http://localhost:8000", "https://vbeeaistt.com", "https://${module.edge.domain}"]
 }
 
 module "queue" {

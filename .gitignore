@@ -2,6 +2,8 @@
 .env
 *.pem
 *.key
+*_accessKeys.csv
+cloudflare-token.txt
 
 # IDE
 .idea/
@@ -27,11 +29,14 @@ local/bench-logs/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 
 # Terraform
 **/.terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
 *.tfvars
 !*.tfvars.example
 crash.log

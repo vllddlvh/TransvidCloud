@@ -1,0 +1,4 @@
+api_enabled = true
+alert_emails = ["your-email@example.com"]
+# Sau khi ACM được xác thực, dùng ARN từ terraform output web_certificate_arn:
+# web_certificate_arn = "arn:aws:acm:us-east-1:060245183757:certificate/<id>"
