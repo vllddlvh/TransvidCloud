@@ -4,12 +4,12 @@
 
 ## Cập nhật
 
-- Thời điểm: `2026-11-01T22:15:30+07:00`
-- Branch: `phuong-integration`
+- Thời điểm: `2026-11-06`
+- Branch: `nguyen-1`
 
 ## Trạng thái tổng quan
 
-- Current focus: `F-011 — Đồng bộ Đầy đủ Tính năng Frontend theo Đặc tả Backend (F-003 -> F-008)`
+- Current focus: sửa tính tương thích `VideoUploadInitIT` với Java HttpClient để bật CI/CD cho `nguyen-1`; backend CI đã PASS.
 - Feature MVP Backend (F-001 -> F-009): `completed`
 - Feature F-011 (Frontend Feature Parity 16/16 Backend Endpoints): `verified` ([`quality/evidence/F-011-frontend-feature-parity.md`](quality/evidence/F-011-frontend-feature-parity.md))
 - Full-Stack Integration (BE + FE + Worker + Nginx + LocalStack): `verified`
@@ -36,6 +36,7 @@
 
 | Lệnh | Kết quả | Thời điểm | Evidence |
 |---|---|---|---|
+| `cd backend && sh ./mvnw -B verify` trên GitHub Actions | `PASS` (175 unit/slice + 24 integration, không fail/skip) | `2026-11-06` | [F-006 evidence](quality/evidence/F-006-video-upload-init.md), run `42186691223` |
 | `cd frontend && npm run api:check && npm test && npm run build` | `PASS` (13 test files, 142 tests pass, production bundle OK) | `2026-11-01T22:10:53+07:00` | [`quality/evidence/F-011-frontend-feature-parity.md`](quality/evidence/F-011-frontend-feature-parity.md) |
 | `E2E_REAL_STACK=1 E2E_BASE_URL=http://localhost:8000 npx playwright test e2e/real-stack.spec.ts` | `PASS` (1 passed in 14.2s trên Chromium thật + Full Stack) | `2026-11-01T22:14:48+07:00` | Register -> Edit Project -> API Keys -> Upload + Title -> HLS 720p/360p/Auto & 4 Assets -> Embed -> `FAILED_VALIDATION` -> Delete Video |
 | `make e2e` & `make e2e-worker` | `PASS` | `2026-11-01T20:38:49+07:00` | Full API & Worker E2E trên LocalStack |

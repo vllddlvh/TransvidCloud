@@ -62,7 +62,7 @@ resource "aws_iam_role" "github" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:vllddlvh/TransvidCloud:ref:refs/heads/nguyen-1"
+          "token.actions.githubusercontent.com:sub" = "repo:vllddlvh@147725837/TransvidCloud@1410323246:ref:refs/heads/nguyen-1"
         }
       }
     }]

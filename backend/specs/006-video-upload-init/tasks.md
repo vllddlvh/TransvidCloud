@@ -179,6 +179,8 @@ flowchart TD
 
 ### MVP First (User Story 1 Only)
 
+- [x] Hồi quy CI 06/11/2026: sửa Content-Length trong Java HttpClient của `VideoUploadInitIT`; toàn bộ 175 unit/slice và 24 integration tests PASS trên GitHub Actions run `42186691223`.
+
 1. Hoàn thành Phase 1: Setup package và mã lỗi.
 2. Hoàn thành Phase 2: Nền tảng DTOs, DynamoDB `VideoItem`, Mapper, Repository.
 3. Hoàn thành Phase 3: Triển khai trọn vẹn luồng khởi tạo video bằng JWT, ký S3 Presigned URL và lưu DynamoDB.

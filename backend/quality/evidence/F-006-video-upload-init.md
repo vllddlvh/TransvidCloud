@@ -55,3 +55,12 @@
 ## Remaining risks / gaps
 
 - Không có rủi ro kỹ thuật hay khoảng trống. Toàn bộ 109 automated tests pass 100%.
+
+## Hồi quy CI ngày 06/11/2026
+
+- Phạm vi: bug fix nhỏ trong test, không thay đổi API/logic sản phẩm nên không cần full SDD mới. Giữ nguyên kiểm thử presigned PUT và `HeadObject` theo US1/US2.
+- Baseline GitHub run `42186242922`: 175 unit/slice PASS; integration fail tại `VideoUploadInitIT` với `IllegalArgumentException: restricted header name: Content-Length`.
+- Sửa: để `BodyPublishers.ofByteArray` tự tính Content-Length; bỏ đặt header thủ công và bỏ system property thay đổi hạn chế HTTP client toàn JVM.
+- Commit sửa: `9e5ddb5` trên `nguyen-1`.
+- Kiểm chứng thực tế: `cd backend && sh ./mvnw -B verify`, [GitHub run 42186691223](https://github.com/vllddlvh/TransvidCloud/actions/runs/42186691223), exit 0, BUILD SUCCESS. 175 unit/slice + 24 integration PASS, 0 failure/error/skip.
+- Contract dung lượng vẫn được kiểm tra qua `requiredHeaders` và kích thước object thật trên S3 LocalStack. Không bỏ integration test để vượt CI.
