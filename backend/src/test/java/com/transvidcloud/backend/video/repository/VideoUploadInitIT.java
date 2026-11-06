@@ -67,7 +67,6 @@ class VideoUploadInitIT {
             .withServices(LocalStackContainer.Service.DYNAMODB, LocalStackContainer.Service.S3);
 
     static {
-        System.setProperty("jdk.httpclient.allowRestrictedHeaders", "Content-Length");
         localStack.start();
     }
 
@@ -245,7 +244,7 @@ class VideoUploadInitIT {
         HttpRequest s3PutRequest = HttpRequest.newBuilder()
                 .uri(URI.create(presignedUrl))
                 .header("Content-Type", "video/mp4")
-                .header("Content-Length", String.valueOf(fileSize))
+                // BodyPublisher tự cung cấp Content-Length; HttpClient không cho đặt header này thủ công.
                 .PUT(HttpRequest.BodyPublishers.ofByteArray(fakeVideoBytes))
                 .build();
 
