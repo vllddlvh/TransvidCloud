@@ -1,5 +1,15 @@
 # tests/e2e/ - Kiểm thử đầu-cuối
 
+## Đo metrics trên cloud công khai
+
+```powershell
+node tests/e2e/cloud-metrics.mjs https://vbeeaistt.com local/e2e-logs/<run-id>
+```
+
+Chạy từ thư mục gốc, cần Node và API/worker đang hoạt động. Mặc định đo 30 request tuần tự cho mỗi API chính, tạo batch 12 bản sao video 10s 720p, kiểm tra nguồn 360p/không audio và file giả. Tùy chỉnh bằng `CLOUD_METRIC_SAMPLES` (1–100), `CLOUD_METRIC_JOBS` (1–30). Script giữ dữ liệu video hợp lệ để đối chiếu; xóa video giả sau khi xác nhận `FAILED_VALIDATION / NOT_A_VIDEO`. Không tự scale worker hay deploy.
+
+Kết quả `cloud-metrics.json` và `http-samples.csv` chỉ lưu timing, HTTP status và ID test, không lưu token/password/presigned URL. p50/p95 dùng nearest-rank; latency tính đến khi đọc xong response body tại client. Batch throughput gồm confirm và polling, chưa phải công suất tối đa. Script kiểm tra trạng thái, MIME và khả năng tải asset; cần FFprobe riêng để kiểm tra số luồng/độ phân giải thực. Kết quả chi tiết và finding rendition: [báo cáo 08/11/2026](../../docs/report/Cloud-Verification-2026-11-08.md).
+
 **Phụ trách:** Lưu chủ trì (Vũ, Phương viết kịch bản), cả nhóm bổ sung.
 
 Runner: `run.sh`, hai chế độ. Bằng chứng nằm ở `local/e2e-logs/<UTC>-<mode>/` (không commit).

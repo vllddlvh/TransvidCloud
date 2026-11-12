@@ -7,10 +7,22 @@
 $ErrorActionPreference = 'Stop'
 $env:AWS_DEFAULT_REGION = 'ap-southeast-1'
 $env:AWS_PAGER = ''
+if (-not $CredentialCsv -and -not $env:AWS_ACCESS_KEY_ID -and
+    -not $PSBoundParameters.ContainsKey('Profile')) {
+  $localCredentialCsv = Join-Path (Split-Path -Parent $PSScriptRoot) 'tvc-dev_accessKeys.csv'
+  if (Test-Path -LiteralPath $localCredentialCsv -PathType Leaf) {
+    $CredentialCsv = $localCredentialCsv
+  }
+}
 if ($CredentialCsv) {
   $credentialRow = @(Import-Csv -LiteralPath $CredentialCsv)[0]
+  if ([string]::IsNullOrWhiteSpace($credentialRow.'Access key ID') -or
+      [string]::IsNullOrWhiteSpace($credentialRow.'Secret access key')) {
+    throw 'CSV phải có Access key ID và Secret access key không rỗng.'
+  }
   $env:AWS_ACCESS_KEY_ID = $credentialRow.'Access key ID'
   $env:AWS_SECRET_ACCESS_KEY = $credentialRow.'Secret access key'
+  Remove-Item Env:AWS_SESSION_TOKEN -ErrorAction SilentlyContinue
 }
 function Invoke-TvcAws {
   param([string[]]$Arguments)
@@ -25,8 +37,10 @@ $apiInstances = @($api.Reservations | ForEach-Object { $_.Instances })
 $groupResult = Invoke-TvcAws -Arguments @('autoscaling','describe-auto-scaling-groups','--auto-scaling-group-names','tvc-dev-worker-asg')
 $group = @($groupResult.AutoScalingGroups)[0]
 if ($Action -eq 'status') {
-  $apiInstances | Select-Object InstanceId,@{Name='State';Expression={$_.State.Name}}
-  $group | Select-Object AutoScalingGroupName,MinSize,DesiredCapacity,MaxSize
+  $apiInstances | Select-Object InstanceId,@{Name='State';Expression={$_.State.Name}} |
+    Format-Table -AutoSize | Out-String
+  $group | Select-Object AutoScalingGroupName,MinSize,DesiredCapacity,MaxSize |
+    Format-Table -AutoSize | Out-String
   return
 }
 if ($Action -eq 'start') {

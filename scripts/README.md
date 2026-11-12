@@ -12,7 +12,7 @@
 
 Yêu cầu: AWS CLI đã đăng nhập (OIDC trên CI, hoặc profile cá nhân khi chạy tay).
 
-PowerShell: `./scripts/cloud-dev.ps1 -Action status` (hoặc `start`, `stop`). Có thể truyền `-CredentialCsv ./tvc-dev_accessKeys.csv` để dùng key local mà không ghi vào cấu hình AWS. `stop` từ chối nếu queue còn job và không xóa bucket/dữ liệu.
+PowerShell: `./scripts/cloud-dev.ps1 -Action status` (hoặc `start`, `stop`). Khi không có access key trong môi trường và không truyền `-Profile`, script tự đọc `tvc-dev_accessKeys.csv` tại thư mục gốc repo, kể cả khi chạy từ thư mục khác; cách này tránh dùng phiên đăng nhập profile đã hết hạn. Nếu không có CSV, script dùng profile mặc định `tvc-dev`. Có thể truyền `-CredentialCsv <đường-dẫn>` để chọn file cụ thể; tùy chọn này được ưu tiên hơn credentials hiện có. Truyền `-Profile <tên>` để dùng profile thay vì tự chọn CSV. Key chỉ được nạp vào biến môi trường của tiến trình, không ghi vào cấu hình AWS. `stop` từ chối nếu queue còn job và không xóa bucket/dữ liệu.
 
 `deploy-api.sh` cập nhật image tag trong SSM, gọi `systemctl restart tvc.service` trên API và đợi health check từ bootstrap; khôi phục tag trước nếu deploy lỗi. Bootstrap đọc JWT/tunnel token trực tiếp từ SSM.
 

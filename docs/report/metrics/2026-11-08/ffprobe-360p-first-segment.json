@@ -1,0 +1,50 @@
+{
+    "programs": [
+        {
+            "streams": [
+                {
+                    "codec_name": "h264",
+                    "codec_type": "video",
+                    "width": 640,
+                    "height": 360
+                },
+                {
+                    "codec_name": "aac",
+                    "codec_type": "audio"
+                },
+                {
+                    "codec_name": "h264",
+                    "codec_type": "video",
+                    "width": 1280,
+                    "height": 720
+                },
+                {
+                    "codec_name": "aac",
+                    "codec_type": "audio"
+                }
+            ]
+        }
+    ],
+    "streams": [
+        {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360
+        },
+        {
+            "codec_name": "aac",
+            "codec_type": "audio"
+        },
+        {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1280,
+            "height": 720
+        },
+        {
+            "codec_name": "aac",
+            "codec_type": "audio"
+        }
+    ]
+}
