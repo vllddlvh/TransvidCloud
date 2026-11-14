@@ -68,7 +68,10 @@ resource "aws_instance" "api" {
   user_data_replace_on_change = false
   # Khi Stop, EC2 nhả public IPv4 và provider đọc thuộc tính này là false.
   # Giữ cấu hình public IP lúc tạo, tránh thay máy sau quy trình hạ tải hàng ngày.
-  lifecycle { ignore_changes = [associate_public_ip_address] }
+  # Bỏ qua ami và user_data để tránh việc AWS cập nhật AMI AL2023 mới làm terminate máy API đang chạy.
+  lifecycle {
+    ignore_changes = [associate_public_ip_address, ami, user_data]
+  }
   metadata_options {
     http_tokens                 = "required"
     http_put_response_hop_limit = 2
