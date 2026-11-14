@@ -27,6 +27,7 @@ local/e2e-logs/
 local/bench-logs/
 
 # Frontend
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/test-results/

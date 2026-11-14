@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev, nguyen-1]
+  push:
+    branches: [main, dev, nguyen-1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      worker: ${{ steps.filter.outputs.worker }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            worker:
+              - 'worker/**'
+            frontend:
+              - 'frontend/**'
+            infra:
+              - 'infra/terraform/**'
+              - 'scripts/**'
+              - 'tests/deploy/**'
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - if: ${{ hashFiles('backend/pom.xml') != '' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - if: ${{ hashFiles('backend/pom.xml') != '' }}
+        run: cd backend && sh ./mvnw -B verify
+
+  worker:
+    needs: changes
+    if: needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - if: ${{ hashFiles('worker/go.mod') != '' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: worker/go.mod
+      - if: ${{ hashFiles('worker/go.mod') != '' }}
+        run: cd worker && go vet ./... && go test ./...
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - if: ${{ hashFiles('frontend/package.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - if: ${{ hashFiles('frontend/package.json') != '' }}
+        run: cd frontend && npm ci && npm run build --if-present && npm test --if-present
+
+  terraform:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kiểm tra cú pháp script và kịch bản deploy
+        run: |
+          bash -n scripts/deploy-api.sh
+          bash -n scripts/bump-worker-tag.sh
+          bash tests/deploy/dormant.sh
+          bash tests/deploy/worker-refresh.sh
+      - if: ${{ hashFiles('infra/terraform/envs/dev/*.tf') != '' }}
+        uses: hashicorp/setup-terraform@v3
+      - if: ${{ hashFiles('infra/terraform/envs/dev/*.tf') != '' }}
+        run: |
+          terraform fmt -check -recursive infra/terraform
+          cd infra/terraform/envs/dev && terraform init -backend=false && terraform validate
+
+  deploy:
+    needs: [changes, backend, worker, frontend, terraform]
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      github.ref == 'refs/heads/nguyen-1' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (needs.changes.outputs.backend == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      deploy_backend: ${{ needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' }}
+      deploy_worker: ${{ needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch' }}
+      deploy_frontend: ${{ needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' }}

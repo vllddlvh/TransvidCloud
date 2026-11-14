@@ -1,0 +1,146 @@
+# CI gọi workflow này sau khi các kiểm tra PASS trên nhánh nguyen-1
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      deploy_backend:
+        type: boolean
+        default: true
+      deploy_worker:
+        type: boolean
+        default: true
+      deploy_frontend:
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      deploy_backend:
+        type: boolean
+        default: true
+        description: "Deploy Backend API lên EC2"
+      deploy_worker:
+        type: boolean
+        default: true
+        description: "Deploy Worker lên Spot ASG"
+      deploy_frontend:
+        type: boolean
+        default: true
+        description: "Deploy Frontend lên S3 & CloudFront"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tvc-dev-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-1
+  TAG: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  build-push-backend:
+    if: inputs.deploy_backend && github.ref == 'refs/heads/nguyen-1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build và push backend image
+        run: |
+          set -euo pipefail
+          IMAGE="${{ vars.ECR_REGISTRY }}/tvc-backend"
+          docker build -t "$IMAGE:$TAG" backend
+          docker push "$IMAGE:$TAG"
+
+  deploy-api:
+    needs: build-push-backend
+    if: inputs.deploy_backend && github.ref == 'refs/heads/nguyen-1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Cập nhật API hoặc chuẩn bị phiên bản cho lần bật máy tiếp theo
+        env:
+          ENV: dev
+        run: bash scripts/deploy-api.sh
+
+  build-push-worker:
+    if: inputs.deploy_worker && github.ref == 'refs/heads/nguyen-1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build và push worker image
+        run: |
+          set -euo pipefail
+          IMAGE="${{ vars.ECR_REGISTRY }}/tvc-worker"
+          docker build -t "$IMAGE:$TAG" worker
+          docker push "$IMAGE:$TAG"
+
+  deploy-worker:
+    needs: build-push-worker
+    if: inputs.deploy_worker && github.ref == 'refs/heads/nguyen-1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Cập nhật worker tag và theo dõi Instance Refresh khi có máy
+        env:
+          ENV: dev
+        run: bash scripts/bump-worker-tag.sh
+
+  deploy-frontend:
+    needs: [deploy-api, deploy-worker]
+    if: |
+      always() &&
+      inputs.deploy_frontend &&
+      github.ref == 'refs/heads/nguyen-1' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend production
+        working-directory: frontend
+        run: npm ci && npm run build
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Upload frontend và đợi invalidation hoàn tất
+        env:
+          FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
+          DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+        run: |
+          set -euo pipefail
+          aws s3 sync frontend/dist "s3://$FRONTEND_BUCKET" --exclude ".vite/*" --cache-control "public,max-age=300" --only-show-errors
+          aws s3 cp frontend/dist/index.html "s3://$FRONTEND_BUCKET/index.html" --content-type text/html --cache-control no-cache --only-show-errors
+          INVALIDATION=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*" --query Invalidation.Id --output text)
+          aws cloudfront wait invalidation-completed --distribution-id "$DISTRIBUTION_ID" --id "$INVALIDATION"
+          printf 'Frontend: https://vbeeaistt.com\nImage tag: %s\n' "$TAG" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,37 @@
+-4.1: sau khi 1 máy ảo phụ trách bị terminate thì đã có máy ảo khác được launch thay thế: Successful
+Launching a new EC2 instance: i-079dd9e79a5796c53
+At 2026-11-12T16:06:19Z an instance was launched in response to an unhealthy instance needing to be replaced.
+2026 November 12, 11:06:21 PM +07:00
+2026 November 12, 11:06:26 PM +07:00
+Successful
+Terminating EC2 instance: i-0faff3b94bd50029f
+At 2026-11-12T16:06:19Z an instance was taken out of service in response to an EC2 health check indicating it has been terminated or stopped.
+-4.2:Máy ảo worker vẫn handle được khi test bơm 20 jobs vào sqs chưa có hiện tượng scale out và chưa có chính sách tự động SG hiện tại chưa được gắn chính sách tự động (Scaling Policy)
+
+  Tôi vừa kiểm tra cấu hình ASG qua lệnh:
+
+    aws autoscaling describe-policies --auto-scaling-group-name tvc-dev-worker-asg
+
+  Kết quả trả về: "ScalingPolicies": [] (danh sách chính sách co giãn tự động đang trống).
+
+  • Thực tế cấu hình hiện tại: Nhóm cấu hình trong Terraform là ASG với min_size = 0, max_size = 3, desired_capacity = 1, và việc tăng giảm số lượng máy
+  đang được quản lý chủ động thông qua script cloud-dev.ps1 hoặc lệnh CLI, chưa cấu hình gắn CloudWatch Alarm tự động kích hoạt scale-out.
+-4.3: 
+PS D:\TransvidCloud> curl.exe -I https://vbeeaistt.com/media/prj_scale_demo/vid_scale_3/hls/720p/seg_000.ts
+HTTP/1.1 200 OK
+Content-Type: video/mp2t
+Content-Length: 1798032
+Connection: keep-alive
+Server: AmazonS3
+Date: Thu, 12 Nov 2026 17:25:11 GMT
+Last-Modified: Thu, 12 Nov 2026 17:19:47 GMT
+ETag: "2d3a32529e01af47d1faeaba9a89ef2a"
+x-amz-server-side-encryption: AES256
+Cache-Control: public, max-age=31536000, immutable
+Accept-Ranges: bytes
+X-Cache: Hit from cloudfront
+Via: 1.1 3c7b4aabb79ac3c025060e2c587f8428.cloudfront.net (CloudFront)
+X-Amz-Cf-Pop: HKG1-P2
+X-Amz-Cf-Id: ZCGCf7OSuCJTdUpn6-Q97KFeGJXDcezF2IqpQQJraSa59qKoxdMM0A==
+Age: 119
+4.4: không có dòng log lỗi khi xử lý video nặng và dài.

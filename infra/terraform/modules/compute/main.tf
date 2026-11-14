@@ -10,6 +10,16 @@ variable "output_bucket" { type = string }
 variable "queue_url" { type = string }
 variable "api_enabled" { type = bool }
 variable "allowed_origins" { type = list(string) }
+variable "worker_min_size" {
+  type        = number
+  default     = 1
+  description = "Số lượng worker tối thiểu (Báo cáo 2: min=1 cho demo và benchmark; min=0 khi hạ tải nghỉ)"
+}
+variable "worker_max_size" {
+  type        = number
+  default     = 4
+  description = "Số lượng worker tối đa (Báo cáo 2: max=4; có thể hạ về 2 nếu AWS Budgets cảnh báo)"
+}
 data "aws_ssm_parameter" "ami" { name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64" }
 locals {
   prefix   = "tvc-${var.environment}"
@@ -97,9 +107,9 @@ resource "aws_launch_template" "worker" {
 }
 resource "aws_autoscaling_group" "worker" {
   name                  = "${local.prefix}-worker-asg"
-  min_size              = 0
-  desired_capacity      = 0
-  max_size              = 3
+  min_size              = var.worker_min_size
+  desired_capacity      = var.worker_min_size
+  max_size              = var.worker_max_size
   vpc_zone_identifier   = var.subnet_ids
   protect_from_scale_in = true
   mixed_instances_policy {
@@ -131,6 +141,25 @@ resource "aws_autoscaling_group" "worker" {
   }
   lifecycle { ignore_changes = [desired_capacity] }
 }
+
+# Giao diện [14]: Target Tracking Scaling Policy theo BacklogPerInstance (1-4 máy)
+resource "aws_autoscaling_policy" "worker_backlog" {
+  name                   = "${local.prefix}-worker-backlog-tracking"
+  autoscaling_group_name = aws_autoscaling_group.worker.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    target_value     = 2.0 # Mỗi worker gánh trung bình 2 message đang chờ
+    disable_scale_in = false
+
+    customized_metric_specification {
+      metric_name = "BacklogPerInstance"
+      namespace   = "TransVidCloud/${var.environment}"
+      statistic   = "Average"
+    }
+  }
+}
+
 output "api_id" { value = try(aws_instance.api[0].id, null) }
 output "worker_asg" { value = aws_autoscaling_group.worker.name }
 output "registry" { value = local.registry }
